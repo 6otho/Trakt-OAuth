@@ -53,7 +53,7 @@
 1. 登录 Cloudflare Dashboard。
 2. 进入：Workers & Pages。
 3. 点击 “Create Application” → “Create Worker”。
-4. 命名你的项目（例如：reflix），点击 Deploy。
+4. 命名你的项目（例如：trakt），点击 Deploy。
 5. 部署完成后点击 “Edit code”。
 6. 清空编辑器中的默认代码。
 7. 将本项目的 `worker.js` 代码全部复制并粘贴进去。
@@ -62,7 +62,7 @@
 完成后，请记下你的 Worker 域名，格式通常为：
 
 ```
-https://reflix.你的用户名.workers.dev
+https://trakt.你的用户名.workers.dev
 ```
 
 后续配置会使用该地址。
