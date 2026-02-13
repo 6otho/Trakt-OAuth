@@ -1,6 +1,6 @@
 # Trakt & TMDB 个人追番神器
 
-Reflix 是一个运行在 Cloudflare Workers 上的轻量级 Serverless 追番 Web App。它结合 Trakt 的强大记录功能与 TMDB 的精美中文元数据，为你提供极速、无广告、隐私安全的个人追番体验。
+这是是一个运行在 Cloudflare Workers 上的轻量级 Serverless 追番 Web App。它结合 Trakt 的强大记录功能与 TMDB 的精美中文元数据，为你提供极速、无广告、隐私安全的个人追番体验。
 
 ![License](https://img.shields.io/badge/License-MIT-blue.svg)
 ![Platform](https://img.shields.io/badge/Platform-Cloudflare%20Workers-orange)
