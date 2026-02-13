@@ -1,13 +1,13 @@
 /**
  * ==============================================================================
- * Cloudflare Worker 追番列表 (V31: 像素级左对齐 + 移除右上角退出)
+ * Cloudflare Worker 追番列表 (V38: 头像防崩修复 + TMDB单集精确时长优先)
  * ==============================================================================
  */
 
 const REFLIX_HEADERS = {
     'Content-Type': 'application/json',
     'trakt-api-version': '2',
-    'User-Agent': 'Reflix/3.1.0 (iPad; iOS 16.1; Scale/2.00)',
+    'User-Agent': 'Reflix/3.8.0 (iPad; iOS 16.1; Scale/2.00)',
     'Accept': '*/*'
 };
 
@@ -21,7 +21,7 @@ export default {
             return new Response("Error: 请在后台配置 TRAKT_ID, TRAKT_SECRET 和 TMDB_TOKEN", { status: 500 });
         }
 
-        // 🔓 0. 公开数据接口 (海报墙)
+        // 🔓 0. 公开数据接口
         if (path === '/api/public/backdrop') {
             return await handlePublicBackdrop(env);
         }
@@ -103,6 +103,9 @@ export default {
                 if (path.includes('/user/trakt_fav')) return handleTrueFavorites(cleanEnv);
                 if (path.includes('/user/favs')) return handleUserFavs(cleanEnv);
                 
+                // 获取用户信息（头像）
+                if (path.includes('/user/me')) return handleUserProfile(cleanEnv);
+                
                 if (path.includes('/list')) {
                     return handleListRequest(cleanEnv, url.searchParams);
                 }
@@ -143,6 +146,18 @@ async function handlePublicBackdrop(env) {
     }
 }
 
+// --- 用户信息接口 ---
+async function handleUserProfile(env) {
+    const headers = { ...REFLIX_HEADERS, 'trakt-api-key': env.TRAKT_ID, 'Authorization': `Bearer ${env.USER_TOKEN}` };
+    try {
+        const res = await fetch('https://api.trakt.tv/users/me?extended=full', { headers });
+        const data = await res.json();
+        return new Response(JSON.stringify(data), { headers: {'Content-Type': 'application/json'} });
+    } catch {
+        return new Response(JSON.stringify({}), { status: 200 });
+    }
+}
+
 // --- 交互动作 ---
 async function handleUserAction(request, env) {
     const body = await request.json();
@@ -169,7 +184,7 @@ async function handleUserAction(request, env) {
     return new Response(JSON.stringify(data), { headers: {'Content-Type': 'application/json'} });
 }
 
-// --- Favorites (Red Hearts) ---
+// --- Favorites ---
 async function handleTrueFavorites(env) {
     const headers = { ...REFLIX_HEADERS, 'trakt-api-key': env.TRAKT_ID, 'Authorization': `Bearer ${env.USER_TOKEN}` };
     const [resShows, resMovies] = await Promise.all([
@@ -181,12 +196,7 @@ async function handleTrueFavorites(env) {
     if (resMovies.ok) movies = await resMovies.json();
 
     let allItems = [...(Array.isArray(shows)?shows:[]), ...(Array.isArray(movies)?movies:[])];
-    
-    allItems.sort((a, b) => {
-        const timeA = new Date(a.liked_at || 0).getTime();
-        const timeB = new Date(b.liked_at || 0).getTime();
-        return timeB - timeA;
-    });
+    allItems.sort((a, b) => new Date(b.liked_at || 0).getTime() - new Date(a.liked_at || 0).getTime());
 
     return new Response(JSON.stringify(await hydrateTrakt(env, allItems.slice(0, 50), 'trakt_fav')), { headers: { 'Content-Type': 'application/json' } });
 }
@@ -253,6 +263,7 @@ async function handleListRequest(env, params) {
     return new Response(JSON.stringify(results), { headers: {'Content-Type': 'application/json'} });
 }
 
+// --- TMDB 补充 (核心：时间戳修复) ---
 async function hydrateTrakt(env, items, typeOverride) {
     if (!Array.isArray(items)) return [];
     const promises = items.slice(0, 35).map(async (item) => {
@@ -274,18 +285,24 @@ async function hydrateTrakt(env, items, typeOverride) {
             
             let episodeStill = null;
             let currentProgress = null;
+            let specificRuntime = null;
+
             if (mediaType === 'tv' && item.episode) {
                 try {
+                    // 🔥 获取单集详情，确保拿到最准确的 runtime
                     const epRes = await fetch(`https://api.themoviedb.org/3/tv/${tmdbId}/season/${item.episode.season}/episode/${item.episode.number}?language=zh-CN`, { headers: { 'Authorization': `Bearer ${env.TMDB_TOKEN}` } });
                     const epData = await epRes.json();
                     if(epData.still_path) episodeStill = epData.still_path;
+                    if(epData.runtime) specificRuntime = epData.runtime; // TMDB单集精确时长
                 } catch(err) {}
             }
             if (typeOverride === 'continue' && item.progress) currentProgress = item.progress;
+            
             return { 
                 ...d, media_type: mediaType, trakt_type: typeOverride, air_time_iso: airTime, episode_info: item.episode, 
                 origin_country: d.origin_country || [], genres: d.genres || [],
-                runtime_real: d.runtime || (d.episode_run_time ? d.episode_run_time[0] : null),
+                // 优先使用单集时长，其次是详情页时长，最后是平均时长
+                runtime_real: specificRuntime || d.runtime || (d.episode_run_time ? d.episode_run_time[0] : null),
                 episode_image: episodeStill, next_ep_date: d.next_episode_to_air ? d.next_episode_to_air.air_date : null,
                 last_ep_date: d.last_air_date, last_ep_info: d.last_episode_to_air,
                 total_seasons: d.number_of_seasons, total_episodes: d.number_of_episodes, status: d.status,
@@ -325,19 +342,16 @@ const htmlContent = `
   #app-container { width: 100%; height: 100%; position: relative; display: flex; flex-direction: column; overflow: hidden; }
   @media (min-width: 768px) { body { background-color: var(--bg-desktop); display: flex; justify-content: center; align-items: center; position: static; } #app-container { width: 100%; max-width: 430px; height: 90vh; max-height: 880px; position: relative; border-radius: 44px; border: 8px solid #2a2a2a; box-shadow: 0 0 60px rgba(0,0,0,0.6); overflow: hidden; background: var(--bg-app); } }
   
-  /* 🔥 强制左对齐修正 */
+  /* 🔥 强制左对齐统一 (20px) */
   .top-glass-bar { position: absolute; top: 0; left: 0; right: 0; z-index: 20; background: var(--glass-header); backdrop-filter: blur(20px) saturate(180%); -webkit-backdrop-filter: blur(20px) saturate(180%); border-bottom: 1px solid var(--glass-border); padding-top: env(safe-area-inset-top); padding-bottom: 10px; }
-  
-  /* 统一左内边距 24px */
-  .header-nav { display: flex; align-items: center; padding: 8px 24px 4px 24px; justify-content: flex-start; gap: 15px; } 
-  .page-header { padding: 0 24px; }
-  .sub-tabs { display: flex; gap: 8px; overflow-x: auto; padding: 0 24px 8px 24px; } 
-  .week-grid-tabs { display: grid; grid-template-columns: repeat(7, 1fr); gap: 5px; padding: 0 24px 4px 24px; }
+  .header-nav { display: flex; align-items: center; padding: 8px 20px 4px 20px; justify-content: flex-start; gap: 15px; } 
+  .page-header { padding: 0 20px; } 
+  .sub-tabs { display: flex; gap: 8px; overflow-x: auto; padding: 0 20px 8px 20px; } 
+  .week-grid-tabs { display: grid; grid-template-columns: repeat(7, 1fr); gap: 5px; padding: 0 20px 4px 20px; }
 
   .media-segment { display: flex; align-items: center; background: var(--pill-bg); backdrop-filter: blur(10px); border-radius: 99px; padding: 3px; border: 1px solid var(--glass-border); }
   .seg-btn { border-radius: 99px; padding: 6px 14px; display: flex; align-items: center; justify-content: center; gap: 6px; color: var(--text-secondary); transition: all 0.3s; font-size: 13px; cursor: pointer; font-weight: 600; }
   .seg-btn.active { background: var(--accent-purple); color: var(--pill-active-text); box-shadow: 0 2px 8px rgba(109, 40, 217, 0.3); }
-  
   .page-title { font-size: 26px; font-weight: 900; color: var(--text-primary); margin-bottom: 8px; letter-spacing: -0.5px; }
   .sub-tabs::-webkit-scrollbar { display: none; }
   .sub-pill { padding: 7px 14px; border-radius: 12px; font-size: 12px; font-weight: 700; background: var(--pill-bg); border: 1px solid var(--glass-border); color: var(--text-secondary); white-space: nowrap; transition: all 0.2s; flex-shrink: 0; }
@@ -369,7 +383,7 @@ const htmlContent = `
   .nav-btn i { font-size: 26px; transition: transform 0.3s; filter: drop-shadow(0 1px 2px rgba(0,0,0,0.05)); } 
   .nav-btn.active { color: var(--nav-icon-active); } .nav-btn.active i { transform: translateY(-3px) scale(1.1); color: var(--accent-purple); filter: drop-shadow(0 3px 6px rgba(109, 40, 217, 0.25)); }
   .nav-btn.active .user-avatar { border-color: var(--accent-purple); transform: translateY(-3px) scale(1.05); }
-  .user-avatar { width: 28px; height: 28px; border-radius: 50%; background: #ccc; border: 2px solid transparent; transition: all 0.3s; box-shadow: 0 2px 5px rgba(0,0,0,0.15); }
+  .user-avatar { width: 28px; height: 28px; border-radius: 50%; background: #ccc; border: 2px solid transparent; transition: all 0.3s; box-shadow: 0 2px 5px rgba(0,0,0,0.15); object-fit: cover; }
   .modal-overlay { position: absolute; inset: 0; z-index: 100; background: rgba(0,0,0,0.5); backdrop-filter: blur(6px); display: flex; align-items: flex-end; transition: opacity 0.3s; }
   .detail-sheet { width: 100%; max-height: 85%; background: var(--sheet-bg); border-radius: 32px 32px 0 0; padding-bottom: calc(30px + env(safe-area-inset-bottom)); box-shadow: 0 -10px 50px rgba(0,0,0,0.35); display: flex; flex-direction: column; overflow: hidden; animation: slideUp 0.4s cubic-bezier(0.19, 1, 0.22, 1); }
   @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
@@ -413,6 +427,19 @@ const htmlContent = `
   .logout-btn { flex: 1; padding: 10px; border-radius: 10px; font-weight: bold; cursor: pointer; }
   .btn-cancel { background: var(--capsule-bg); color: var(--text-primary); }
   .btn-confirm { background: #ED1C24; color: #fff; }
+  
+  /* 🔥 V36 迷你播放器 (白色 + 秒级计算) */
+  .mini-player-bar { 
+      position: absolute; bottom: 0; left: 0; right: 0; 
+      height: 28px; 
+      background: linear-gradient(to top, rgba(0,0,0,0.9) 0%, rgba(0,0,0,0) 100%);
+      z-index: 15; border-radius: 0 0 12px 12px; 
+      display: flex; align-items: center; padding: 0 8px 4px 8px; gap: 6px;
+  }
+  .mini-player-icon { font-size: 8px; color: #fff; text-shadow: 0 1px 2px rgba(0,0,0,0.8); }
+  .mini-track { flex: 1; height: 3px; background: rgba(255,255,255,0.3); border-radius: 2px; overflow: hidden; position: relative; }
+  .mini-fill { height: 100%; background: #fff; border-radius: 2px; box-shadow: 0 0 4px rgba(255,255,255,0.5); }
+  .mini-time { font-size: 9px; font-weight: 700; color: #fff; text-shadow: 0 1px 2px rgba(0,0,0,0.8); letter-spacing: 0.3px; min-width: 20px; text-align: right; }
 </style>
 </head>
 <body>
@@ -484,6 +511,16 @@ const htmlContent = `
                     <div class="poster-wrapper">
                          <img :src="getPoster(item)" class="poster-thumb" loading="lazy">
                          <div v-if="currentMainTab === 'schedule'" class="date-badge">{{ getRelativeDateLabel(item) }}</div>
+                         
+                         <!-- 🔥 V37 白色迷你播放器 + 精确时间 -->
+                         <div v-if="item.watch_progress > 0" class="mini-player-bar">
+                             <i class="fas fa-play mini-player-icon"></i>
+                             <div class="mini-track">
+                                 <div class="mini-fill" :style="{width: item.watch_progress + '%'}"></div>
+                             </div>
+                             <span class="mini-time">{{ getWatchedTime(item) }}</span>
+                         </div>
+                         
                     </div>
                     <div class="info-col">
                         <div class="more-btn-area" @click.stop="openMenu(item)"><i class="fas fa-ellipsis-h"></i></div>
@@ -506,7 +543,7 @@ const htmlContent = `
     <div class="bottom-nav">
         <div @click="switchMainTab('discover')" :class="['nav-btn', currentMainTab === 'discover' ? 'active' : '']"><i class="far fa-compass"></i><span>发现</span></div>
         <div @click="switchMainTab('schedule')" :class="['nav-btn', currentMainTab === 'schedule' ? 'active' : '']"><i class="far fa-calendar-alt"></i><span>新番</span></div>
-        <div @click="handleMineClick" :class="['nav-btn', currentMainTab === 'mine' ? 'active' : '']"><img src="https://ui-avatars.com/api/?name=Me&background=random&color=fff" class="user-avatar"><span>我的</span></div>
+        <div @click="handleMineClick" :class="['nav-btn', currentMainTab === 'mine' ? 'active' : '']"><img :src="userAvatar || 'https://ui-avatars.com/api/?name=Me&background=random&color=fff'" class="user-avatar" @error="handleAvatarError"><span>我的</span></div>
     </div>
 
     <div v-if="selectedItem" class="modal-overlay" @click.self="selectedItem = null">
@@ -564,15 +601,18 @@ createApp({
         const showLogoutModal = ref(false);
         const lastMineClickTime = ref(0);
         const backgroundPosters = ref([]);
-        
-        // ⚡️ 竞态锁
         const fetchId = ref(0);
+        const userAvatar = ref('');
 
         onMounted(() => {
             const token = localStorage.getItem('trakt_token');
+            const savedAvatar = localStorage.getItem('trakt_avatar');
+            if(savedAvatar) userAvatar.value = savedAvatar;
+            
             if (token) {
                 isLoggedIn.value = true;
                 fetchData();
+                fetchProfile();
             } else {
                 fetchBackdrop();
             }
@@ -584,12 +624,31 @@ createApp({
                 if(res.ok) backgroundPosters.value = await res.json();
             } catch(e){}
         };
+        
+        const fetchProfile = async () => {
+            try {
+                const token = localStorage.getItem('trakt_token');
+                const res = await fetch('/api/user/me', { headers: { 'Authorization': 'Bearer ' + token } });
+                const data = await res.json();
+                if(data.images?.avatar?.full) {
+                    userAvatar.value = data.images.avatar.full;
+                    localStorage.setItem('trakt_avatar', userAvatar.value);
+                }
+            } catch(e){}
+        };
+        
+        // 🔥 头像加载失败回落
+        const handleAvatarError = (e) => {
+            e.target.src = 'https://ui-avatars.com/api/?name=Me&background=random&color=fff';
+        };
 
         const logout = () => {
             localStorage.removeItem('trakt_token');
+            localStorage.removeItem('trakt_avatar');
             isLoggedIn.value = false;
             showLogoutModal.value = false;
             rawData.value = [];
+            userAvatar.value = '';
             fetchBackdrop(); 
         };
 
@@ -698,9 +757,30 @@ createApp({
         const getPoster = (i) => i.poster_path ? TMDB_IMG + 'w200' + i.poster_path : 'https://via.placeholder.com/200x300/e0e0e0/ffffff?text=No+Poster';
         const getBackdrop = (i) => { if (i.episode_image) return TMDB_IMG + 'w780' + i.episode_image; if (i.backdrop_path) return TMDB_IMG + 'w780' + i.backdrop_path; return 'https://via.placeholder.com/600x340/e0e0e0/ffffff?text=TMDB&Trakt'; };
         const openModal = (item) => { selectedItem.value = item; };
-        const openMenu = (item) => { menuItem.value = item; }; 
+        const openMenu = (item) => { menuItem.value = item; };
+        
+        // 🔥 V38 精确秒级计算
+        const getWatchedTime = (item) => {
+            const totalMinutes = item.runtime_real || 0; // 强制使用 TMDB 单集时长
+            const progress = item.watch_progress || 0;
+            
+            // 转换为秒
+            const totalWatchedSeconds = Math.floor(totalMinutes * 60 * (progress / 100));
+            
+            const h = Math.floor(totalWatchedSeconds / 3600);
+            const m = Math.floor((totalWatchedSeconds % 3600) / 60);
+            const s = totalWatchedSeconds % 60;
+            
+            const hStr = h.toString().padStart(2, '0');
+            const mStr = m.toString().padStart(2, '0');
+            const sStr = s.toString().padStart(2, '0');
+            
+            if (h > 0) return \`\${hStr}:\${mStr}:\${sStr}\`;
+            return \`\${mStr}:\${sStr}\`;
+        };
+
         onMounted(() => { if(isLoggedIn.value) fetchData(); });
-        return { currentMainTab, switchMainTab, currentSubTab, subTabs, filterType, weekDays, selectedWeekDay, loading, processedList, getPageTitle, selectedItem, menuItem, toastMsg, openModal, openMenu, performAction, getPoster, getBackdrop, formatSubtitle, formatDuration, formatScheduleInfo, formatCapsuleRight, formatTraktStats, getRelativeDateLabel, formatVotes, isLoggedIn, logout, handleMineClick, showLogoutModal, backgroundPosters };
+        return { currentMainTab, switchMainTab, currentSubTab, subTabs, filterType, weekDays, selectedWeekDay, loading, processedList, getPageTitle, selectedItem, menuItem, toastMsg, openModal, openMenu, performAction, getPoster, getBackdrop, formatSubtitle, formatDuration, formatScheduleInfo, formatCapsuleRight, formatTraktStats, getRelativeDateLabel, formatVotes, isLoggedIn, logout, handleMineClick, showLogoutModal, backgroundPosters, getWatchedTime, userAvatar, handleAvatarError };
     }
 }).mount('#app-container');
 </script>
