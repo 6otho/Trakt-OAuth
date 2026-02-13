@@ -77,7 +77,7 @@ https://trakt.你的用户名.workers.dev
 
 3. 填写信息：
 
-   * Name：任意（例如 MyReflix）
+   * Name：任意（例如 Mytrakt）
 
    * Redirect URIs：
 
@@ -90,7 +90,7 @@ https://trakt.你的用户名.workers.dev
      示例：
 
      ```
-     https://reflix.zhangsan.workers.dev/auth/callback
+     https://trakt.zhangsan.workers.dev/auth/callback
      ```
 
    * Javascript (CORS) origins：填写你的 Worker 域名（不带路径）
@@ -98,7 +98,7 @@ https://trakt.你的用户名.workers.dev
      示例：
 
      ```
-     https://reflix.zhangsan.workers.dev
+     https://trakt.zhangsan.workers.dev
      ```
 
 4. 点击 “Save App”。
