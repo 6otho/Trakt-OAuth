@@ -1,15 +1,9 @@
 /**
  * ==============================================================================
- * Cloudflare Worker 追番列表 (V38: 头像防崩修复 + TMDB单集精确时长优先)
+ * Cloudflare Worker 追番列表 (V39: 终极防屏蔽架构 - 全面转为客户端直连)
+ * 彻底解决 Trakt Error 1015 (Cloudflare 机房 IP 被官方封锁的问题)
  * ==============================================================================
  */
-
-const REFLIX_HEADERS = {
-    'Content-Type': 'application/json',
-    'trakt-api-version': '2',
-    'User-Agent': 'Reflix/3.8.0 (iPad; iOS 16.1; Scale/2.00)',
-    'Accept': '*/*'
-};
 
 export default {
     async fetch(request, env) {
@@ -21,306 +15,66 @@ export default {
             return new Response("Error: 请在后台配置 TRAKT_ID, TRAKT_SECRET 和 TMDB_TOKEN", { status: 500 });
         }
 
-        // 🔓 0. 公开数据接口
-        if (path === '/api/public/backdrop') {
-            return await handlePublicBackdrop(env);
-        }
-
-        // 🔐 1. OAuth 认证流程
+        // 🔐 1. OAuth 认证流程 (获取 Code 重定向)
         if (path === '/auth/login') {
             const redirectUri = `${url.origin}/auth/callback`;
             const traktUrl = `https://trakt.tv/oauth/authorize?response_type=code&client_id=${env.TRAKT_ID}&redirect_uri=${encodeURIComponent(redirectUri)}`;
             return Response.redirect(traktUrl, 302);
         }
 
+        // 🔐 2. OAuth Callback (转移到前端浏览器进行 Token 交换，避开 1015 拦截)
         if (path === '/auth/callback') {
             const code = url.searchParams.get('code');
             if (!code) return new Response("Login Failed: No Code provided", { status: 400 });
 
-            try {
-                const tokenRes = await fetch('https://api.trakt.tv/oauth/token', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'User-Agent': REFLIX_HEADERS['User-Agent']
-                    },
-                    body: JSON.stringify({
-                        code: code,
-                        client_id: env.TRAKT_ID,
-                        client_secret: env.TRAKT_SECRET,
-                        redirect_uri: `${url.origin}/auth/callback`,
-                        grant_type: 'authorization_code'
-                    })
-                });
-
-                const textData = await tokenRes.text();
-                let tokenData;
-                try { tokenData = JSON.parse(textData); } catch (e) {
-                    return new Response(`Trakt Error: Non-JSON response.\n${textData.substring(0,200)}`, { status: 500 });
+            const callbackHtml = `
+            <!DOCTYPE html>
+            <html lang="zh-CN"><head><meta name="viewport" content="width=device-width, initial-scale=1"></head>
+            <body style="background:#111;color:#fff;text-align:center;padding:50px;font-family:sans-serif;">
+            <h3>🔄 正在获取授权...</h3>
+            <script>
+                async function getToken() {
+                    try {
+                        const res = await fetch('https://api.trakt.tv/oauth/token', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                code: '${code}',
+                                client_id: '${env.TRAKT_ID}',
+                                client_secret: '${env.TRAKT_SECRET}',
+                                redirect_uri: '${url.origin}/auth/callback',
+                                grant_type: 'authorization_code'
+                            })
+                        });
+                        const data = await res.json();
+                        if(data.access_token) {
+                            localStorage.setItem('trakt_token', data.access_token);
+                            localStorage.setItem('trakt_refresh', data.refresh_token);
+                            document.body.innerHTML = "<h3>✅ 登录成功，正在跳转...</h3>";
+                            setTimeout(function(){ window.location.href = '/'; }, 300);
+                        } else {
+                            document.body.innerHTML = "<h3>❌ 授权失败</h3><p>" + (data.error_description || JSON.stringify(data)) + "</p><button onclick='window.location.href=\"/\"' style='padding:10px 20px;border-radius:20px;background:#fff;color:#000;'>返回首页</button>";
+                        }
+                    } catch(e) {
+                        document.body.innerHTML = "<h3>❌ 网络错误</h3><p>授权请求失败：" + e.message + "</p><button onclick='window.location.href=\"/\"' style='padding:10px 20px;border-radius:20px;background:#fff;color:#000;'>返回首页</button>";
+                    }
                 }
-
-                if (!tokenRes.ok || !tokenData.access_token) {
-                    return new Response(`Auth Error: ${tokenData.error_description || JSON.stringify(tokenData)}`, { status: 400 });
-                }
-
-                const html = `
-                <!DOCTYPE html>
-                <html><head><meta name="viewport" content="width=device-width, initial-scale=1"><style>body{font-family:sans-serif;text-align:center;padding:50px;background:#111;color:#fff}</style></head>
-                <body><h3>✅ 登录成功</h3><p>正在跳转...</p>
-                <script>
-                    localStorage.setItem('trakt_token', '${tokenData.access_token}');
-                    localStorage.setItem('trakt_refresh', '${tokenData.refresh_token}');
-                    setTimeout(() => { window.location.href = '/'; }, 300);
-                </script></body></html>`;
-                return new Response(html, { headers: { 'content-type': 'text/html;charset=UTF-8' } });
-
-            } catch (e) {
-                return new Response(`System Error: ${e.message}`, { status: 500 });
-            }
+                getToken();
+            </script>
+            </body></html>`;
+            return new Response(callbackHtml, { headers: { 'content-type': 'text/html;charset=UTF-8' } });
         }
 
-        // 🛡️ 2. 受保护 API
-        if (path.startsWith('/api')) {
-            const userToken = request.headers.get('Authorization');
-            if (!userToken || userToken === 'Bearer null') {
-                return new Response(JSON.stringify({ error: "Unauthorized", need_login: true }), { status: 401 });
-            }
+        // 🚀 3. 主程序注入 (将环境变量安全注入给前端直接使用)
+        const envScript = `<script>window.ENV = ${JSON.stringify({
+            TRAKT_ID: env.TRAKT_ID,
+            TMDB_TOKEN: env.TMDB_TOKEN
+        })};</script>`;
 
-            const cleanEnv = {
-                TRAKT_ID: env.TRAKT_ID,
-                TMDB_TOKEN: env.TMDB_TOKEN,
-                USER_TOKEN: userToken.replace('Bearer ', '')
-            };
-
-            try {
-                if (request.method === 'POST' && path === '/api/action') {
-                    return await handleUserAction(request, cleanEnv);
-                }
-
-                if (path.includes('/user/continue')) return handleTraktRequest(cleanEnv, 'sync/playback', 50, 'continue');
-                if (path.includes('/user/watchlist')) return handleTraktRequest(cleanEnv, 'sync/watchlist', 100, 'chase');
-                if (path.includes('/user/myschedule')) return handleTraktRequest(cleanEnv, 'calendars/my/shows', 14, 'myschedule');
-                if (path.includes('/user/trakt_fav')) return handleTrueFavorites(cleanEnv);
-                if (path.includes('/user/favs')) return handleUserFavs(cleanEnv);
-                
-                // 获取用户信息（头像）
-                if (path.includes('/user/me')) return handleUserProfile(cleanEnv);
-                
-                if (path.includes('/list')) {
-                    return handleListRequest(cleanEnv, url.searchParams);
-                }
-
-                return new Response(JSON.stringify({ error: "Endpoint Not Found" }), { status: 404 });
-            } catch (e) {
-                return new Response(JSON.stringify({ error: e.message }), { status: 500 });
-            }
-        }
-
-        return new Response(htmlContent, { headers: { 'content-type': 'text/html;charset=UTF-8' } });
+        const finalHtml = htmlContent.replace('<!-- ENV_INJECTION -->', envScript);
+        return new Response(finalHtml, { headers: { 'content-type': 'text/html;charset=UTF-8' } });
     },
 };
-
-// --- 海报墙接口 ---
-async function handlePublicBackdrop(env) {
-    const headers = { ...REFLIX_HEADERS, 'trakt-api-key': env.TRAKT_ID };
-    try {
-        const res = await fetch('https://api.trakt.tv/movies/trending?limit=30', { headers });
-        if (!res.ok) return new Response(JSON.stringify([]), {status: 200});
-        const items = await res.json();
-        
-        const posters = await Promise.all(items.map(async (item) => {
-            const tmdbId = item.movie?.ids?.tmdb;
-            if(!tmdbId) return null;
-            try {
-                const tmdbRes = await fetch(`https://api.themoviedb.org/3/movie/${tmdbId}?language=en-US`, { 
-                    headers: { 'Authorization': `Bearer ${env.TMDB_TOKEN}` } 
-                });
-                const d = await tmdbRes.json();
-                return d.poster_path ? `https://image.tmdb.org/t/p/w342${d.poster_path}` : null;
-            } catch { return null; }
-        }));
-        
-        return new Response(JSON.stringify(posters.filter(p => p !== null)), { headers: {'Content-Type': 'application/json'} });
-    } catch(e) {
-        return new Response(JSON.stringify([]), {status: 200});
-    }
-}
-
-// --- 用户信息接口 ---
-async function handleUserProfile(env) {
-    const headers = { ...REFLIX_HEADERS, 'trakt-api-key': env.TRAKT_ID, 'Authorization': `Bearer ${env.USER_TOKEN}` };
-    try {
-        const res = await fetch('https://api.trakt.tv/users/me?extended=full', { headers });
-        const data = await res.json();
-        return new Response(JSON.stringify(data), { headers: {'Content-Type': 'application/json'} });
-    } catch {
-        return new Response(JSON.stringify({}), { status: 200 });
-    }
-}
-
-// --- 交互动作 ---
-async function handleUserAction(request, env) {
-    const body = await request.json();
-    const { action, item } = body; 
-    let endpoint = '';
-    let payload = {};
-    
-    const mediaObject = { ids: { tmdb: item.id } };
-    if (item.media_type === 'movie') payload = { movies: [mediaObject] };
-    else payload = { shows: [mediaObject] };
-
-    const headers = { ...REFLIX_HEADERS, 'trakt-api-key': env.TRAKT_ID, 'Authorization': `Bearer ${env.USER_TOKEN}` };
-
-    if (action === 'add_chase') endpoint = 'sync/watchlist';         
-    else if (action === 'remove_chase') endpoint = 'sync/watchlist/remove'; 
-    else if (action === 'add_history') endpoint = 'sync/history';    
-    else if (action === 'add_collection') endpoint = 'sync/collection';         
-    else if (action === 'remove_collection') endpoint = 'sync/collection/remove';
-
-    if (!endpoint) return new Response(JSON.stringify({error: "Unknown Action"}), {status: 400});
-
-    const res = await fetch(`https://api.trakt.tv/${endpoint}`, { method: 'POST', headers, body: JSON.stringify(payload) });
-    const data = await res.json();
-    return new Response(JSON.stringify(data), { headers: {'Content-Type': 'application/json'} });
-}
-
-// --- Favorites ---
-async function handleTrueFavorites(env) {
-    const headers = { ...REFLIX_HEADERS, 'trakt-api-key': env.TRAKT_ID, 'Authorization': `Bearer ${env.USER_TOKEN}` };
-    const [resShows, resMovies] = await Promise.all([
-        fetch('https://api.trakt.tv/users/me/favorites/shows', { headers }),
-        fetch('https://api.trakt.tv/users/me/favorites/movies', { headers })
-    ]);
-    let shows = [], movies = [];
-    if (resShows.ok) shows = await resShows.json();
-    if (resMovies.ok) movies = await resMovies.json();
-
-    let allItems = [...(Array.isArray(shows)?shows:[]), ...(Array.isArray(movies)?movies:[])];
-    allItems.sort((a, b) => new Date(b.liked_at || 0).getTime() - new Date(a.liked_at || 0).getTime());
-
-    return new Response(JSON.stringify(await hydrateTrakt(env, allItems.slice(0, 50), 'trakt_fav')), { headers: { 'Content-Type': 'application/json' } });
-}
-
-// --- 通用 Trakt 请求 ---
-async function handleTraktRequest(env, path, limit, typeOverride) {
-    const headers = { ...REFLIX_HEADERS, 'trakt-api-key': env.TRAKT_ID, 'Authorization': `Bearer ${env.USER_TOKEN}` };
-    let url = `https://api.trakt.tv/${path}`;
-    if (path.includes('watchlist')) url += `?sort=added,desc`; 
-    else if (path.includes('playback')) url += `?limit=${limit}`; 
-    else if (path.includes('calendars')) url = `${url}/${new Date().toISOString().split('T')[0]}/${limit}`;
-
-    const res = await fetch(url, { headers });
-    let rawData = [];
-    if (res.ok) {
-        const json = await res.json();
-        if (Array.isArray(json)) rawData = json;
-    }
-    
-    if (typeOverride === 'continue') {
-        const seen = new Set();
-        const unique = [];
-        for (const item of rawData) {
-            const id = item.show?.ids?.trakt || item.movie?.ids?.trakt || item.id;
-            if (id && !seen.has(id)) { seen.add(id); unique.push(item); }
-        }
-        rawData = unique;
-    }
-
-    const hydrated = await hydrateTrakt(env, rawData, typeOverride);
-    return new Response(JSON.stringify(hydrated), { headers: {'Content-Type': 'application/json'} });
-}
-
-// --- 列表请求 ---
-async function handleListRequest(env, params) {
-    const headers = { ...REFLIX_HEADERS, 'trakt-api-key': env.TRAKT_ID, 'Authorization': `Bearer ${env.USER_TOKEN}` };
-    const tab = params.get('tab');
-    let results = [];
-
-    if (tab === 'schedule') {
-        const today = new Date().toISOString().split('T')[0];
-        const days = 7;
-        const [myRes, pubRes] = await Promise.all([
-            fetch(`https://api.trakt.tv/calendars/my/shows/${today}/${days}`, { headers }),
-            fetch(`https://api.trakt.tv/calendars/all/shows/${today}/${days}?extended=full`, { headers })
-        ]);
-        let myData = myRes.ok ? await myRes.json() : [];
-        let pubData = pubRes.ok ? await pubRes.json() : [];
-        
-        const seenIds = new Set();
-        const merged = [];
-        for(let i of myData) { if(i.show?.ids?.trakt && !seenIds.has(i.show.ids.trakt)) { seenIds.add(i.show.ids.trakt); merged.push({...i, is_mine:true}); }}
-        const pubAnime = pubData.filter(i => (i.show?.country === 'jp') && (i.show?.genres?.includes('anime') || i.show?.genres?.includes('animation')));
-        for(let i of pubAnime) { if(i.show?.ids?.trakt && !seenIds.has(i.show.ids.trakt)) { seenIds.add(i.show.ids.trakt); merged.push(i); }}
-        
-        results = await hydrateTrakt(env, merged, 'schedule');
-    } else if (tab === 'trakt_hot') {
-        const res = await fetch('https://api.trakt.tv/shows/trending?limit=15', { headers });
-        if(res.ok) results = await hydrateTrakt(env, await res.json(), 'trending');
-    } else {
-        const r = await fetch(`https://api.themoviedb.org/3/trending/all/week?language=zh-CN`, { headers: { 'Authorization': `Bearer ${env.TMDB_TOKEN}` } });
-        if(r.ok) results = (await r.json()).results;
-    }
-    return new Response(JSON.stringify(results), { headers: {'Content-Type': 'application/json'} });
-}
-
-// --- TMDB 补充 (核心：时间戳修复) ---
-async function hydrateTrakt(env, items, typeOverride) {
-    if (!Array.isArray(items)) return [];
-    const promises = items.slice(0, 35).map(async (item) => {
-        let tmdbId, mediaType, airTime;
-        if (item.first_aired) airTime = item.first_aired;
-        else if (item.paused_at) airTime = item.paused_at; 
-        else if (item.liked_at) airTime = item.liked_at; 
-        else if (item.collected_at) airTime = item.collected_at;
-        
-        if (item.show) { tmdbId = item.show.ids.tmdb; mediaType = 'tv'; }
-        else if (item.movie) { tmdbId = item.movie.ids.tmdb; mediaType = 'movie'; }
-        else { tmdbId = item.id; mediaType = item.media_type || 'tv'; }
-        
-        if (!tmdbId) return null;
-        try {
-            const r = await fetch(`https://api.themoviedb.org/3/${mediaType}/${tmdbId}?language=zh-CN`, { headers: { 'Authorization': `Bearer ${env.TMDB_TOKEN}` } });
-            if (!r.ok) return null;
-            const d = await r.json();
-            
-            let episodeStill = null;
-            let currentProgress = null;
-            let specificRuntime = null;
-
-            if (mediaType === 'tv' && item.episode) {
-                try {
-                    // 🔥 获取单集详情，确保拿到最准确的 runtime
-                    const epRes = await fetch(`https://api.themoviedb.org/3/tv/${tmdbId}/season/${item.episode.season}/episode/${item.episode.number}?language=zh-CN`, { headers: { 'Authorization': `Bearer ${env.TMDB_TOKEN}` } });
-                    const epData = await epRes.json();
-                    if(epData.still_path) episodeStill = epData.still_path;
-                    if(epData.runtime) specificRuntime = epData.runtime; // TMDB单集精确时长
-                } catch(err) {}
-            }
-            if (typeOverride === 'continue' && item.progress) currentProgress = item.progress;
-            
-            return { 
-                ...d, media_type: mediaType, trakt_type: typeOverride, air_time_iso: airTime, episode_info: item.episode, 
-                origin_country: d.origin_country || [], genres: d.genres || [],
-                // 优先使用单集时长，其次是详情页时长，最后是平均时长
-                runtime_real: specificRuntime || d.runtime || (d.episode_run_time ? d.episode_run_time[0] : null),
-                episode_image: episodeStill, next_ep_date: d.next_episode_to_air ? d.next_episode_to_air.air_date : null,
-                last_ep_date: d.last_air_date, last_ep_info: d.last_episode_to_air,
-                total_seasons: d.number_of_seasons, total_episodes: d.number_of_episodes, status: d.status,
-                watch_progress: currentProgress, is_tracking: item.is_mine || false 
-            }; 
-        } catch { return null; }
-    });
-    const resolved = await Promise.all(promises);
-    return resolved.filter(i => i !== null);
-}
-
-async function handleUserFavs(env) {
-    const headers = { 'Authorization': `Bearer ${env.TMDB_TOKEN}` };
-    const acc = await (await fetch('https://api.themoviedb.org/3/account', { headers })).json();
-    const tv = await (await fetch(`https://api.themoviedb.org/3/account/${acc.id}/favorite/tv?language=zh-CN&sort_by=created_at.desc`, { headers })).json();
-    const detailedList = await hydrateTrakt(env, tv.results.map(i => ({...i, media_type: 'tv'})), 'favs');
-    return new Response(JSON.stringify(detailedList), { headers: {'Content-Type': 'application/json'} });
-}
 
 // ================= 🎨 前端 Vue UI =================
 const htmlContent = `
@@ -331,6 +85,7 @@ const htmlContent = `
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <title>Trakt追新</title>
 <link rel="icon" type="image/png" href="https://trakt.tv/assets/logos/logomark.square.gradient-b644b16c38ff775861b4b1f58c1230f6a097a2466ab33ae00445a505c33fcb91.svg">
+<!-- ENV_INJECTION -->
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -342,13 +97,11 @@ const htmlContent = `
   #app-container { width: 100%; height: 100%; position: relative; display: flex; flex-direction: column; overflow: hidden; }
   @media (min-width: 768px) { body { background-color: var(--bg-desktop); display: flex; justify-content: center; align-items: center; position: static; } #app-container { width: 100%; max-width: 430px; height: 90vh; max-height: 880px; position: relative; border-radius: 44px; border: 8px solid #2a2a2a; box-shadow: 0 0 60px rgba(0,0,0,0.6); overflow: hidden; background: var(--bg-app); } }
   
-  /* 🔥 强制左对齐统一 (20px) */
   .top-glass-bar { position: absolute; top: 0; left: 0; right: 0; z-index: 20; background: var(--glass-header); backdrop-filter: blur(20px) saturate(180%); -webkit-backdrop-filter: blur(20px) saturate(180%); border-bottom: 1px solid var(--glass-border); padding-top: env(safe-area-inset-top); padding-bottom: 10px; }
   .header-nav { display: flex; align-items: center; padding: 8px 20px 4px 20px; justify-content: flex-start; gap: 15px; } 
   .page-header { padding: 0 20px; } 
   .sub-tabs { display: flex; gap: 8px; overflow-x: auto; padding: 0 20px 8px 20px; } 
   .week-grid-tabs { display: grid; grid-template-columns: repeat(7, 1fr); gap: 5px; padding: 0 20px 4px 20px; }
-
   .media-segment { display: flex; align-items: center; background: var(--pill-bg); backdrop-filter: blur(10px); border-radius: 99px; padding: 3px; border: 1px solid var(--glass-border); }
   .seg-btn { border-radius: 99px; padding: 6px 14px; display: flex; align-items: center; justify-content: center; gap: 6px; color: var(--text-secondary); transition: all 0.3s; font-size: 13px; cursor: pointer; font-weight: 600; }
   .seg-btn.active { background: var(--accent-purple); color: var(--pill-active-text); box-shadow: 0 2px 8px rgba(109, 40, 217, 0.3); }
@@ -428,14 +181,7 @@ const htmlContent = `
   .btn-cancel { background: var(--capsule-bg); color: var(--text-primary); }
   .btn-confirm { background: #ED1C24; color: #fff; }
   
-  /* 🔥 V36 迷你播放器 (白色 + 秒级计算) */
-  .mini-player-bar { 
-      position: absolute; bottom: 0; left: 0; right: 0; 
-      height: 28px; 
-      background: linear-gradient(to top, rgba(0,0,0,0.9) 0%, rgba(0,0,0,0) 100%);
-      z-index: 15; border-radius: 0 0 12px 12px; 
-      display: flex; align-items: center; padding: 0 8px 4px 8px; gap: 6px;
-  }
+  .mini-player-bar { position: absolute; bottom: 0; left: 0; right: 0; height: 28px; background: linear-gradient(to top, rgba(0,0,0,0.9) 0%, rgba(0,0,0,0) 100%); z-index: 15; border-radius: 0 0 12px 12px; display: flex; align-items: center; padding: 0 8px 4px 8px; gap: 6px; }
   .mini-player-icon { font-size: 8px; color: #fff; text-shadow: 0 1px 2px rgba(0,0,0,0.8); }
   .mini-track { flex: 1; height: 3px; background: rgba(255,255,255,0.3); border-radius: 2px; overflow: hidden; position: relative; }
   .mini-fill { height: 100%; background: #fff; border-radius: 2px; box-shadow: 0 0 4px rgba(255,255,255,0.5); }
@@ -511,8 +257,6 @@ const htmlContent = `
                     <div class="poster-wrapper">
                          <img :src="getPoster(item)" class="poster-thumb" loading="lazy">
                          <div v-if="currentMainTab === 'schedule'" class="date-badge">{{ getRelativeDateLabel(item) }}</div>
-                         
-                         <!-- 🔥 V37 白色迷你播放器 + 精确时间 -->
                          <div v-if="item.watch_progress > 0" class="mini-player-bar">
                              <i class="fas fa-play mini-player-icon"></i>
                              <div class="mini-track">
@@ -520,7 +264,6 @@ const htmlContent = `
                              </div>
                              <span class="mini-time">{{ getWatchedTime(item) }}</span>
                          </div>
-                         
                     </div>
                     <div class="info-col">
                         <div class="more-btn-area" @click.stop="openMenu(item)"><i class="fas fa-ellipsis-h"></i></div>
@@ -604,6 +347,17 @@ createApp({
         const fetchId = ref(0);
         const userAvatar = ref('');
 
+        // 🟢 动态获取正确的 Trakt & TMDB 请求头
+        const getTraktHeaders = () => {
+            const token = localStorage.getItem('trakt_token');
+            const h = { 'Content-Type': 'application/json', 'trakt-api-version': '2', 'trakt-api-key': window.ENV.TRAKT_ID };
+            if (token) h['Authorization'] = 'Bearer ' + token;
+            return h;
+        };
+        const getTmdbHeaders = () => {
+            return { 'Authorization': 'Bearer ' + window.ENV.TMDB_TOKEN };
+        };
+
         onMounted(() => {
             const token = localStorage.getItem('trakt_token');
             const savedAvatar = localStorage.getItem('trakt_avatar');
@@ -618,47 +372,199 @@ createApp({
             }
         });
 
+        // ================= 数据获取逻辑 (纯前端请求，无视 Cloudflare 拦截) =================
         const fetchBackdrop = async () => {
             try {
-                const res = await fetch('/api/public/backdrop');
-                if(res.ok) backgroundPosters.value = await res.json();
+                const res = await fetch('https://api.trakt.tv/movies/trending?limit=30', { headers: getTraktHeaders() });
+                if(!res.ok) return;
+                const items = await res.json();
+                const posters = await Promise.all(items.map(async (item) => {
+                    const tmdbId = item.movie && item.movie.ids ? item.movie.ids.tmdb : null;
+                    if(!tmdbId) return null;
+                    try {
+                        const tmdbRes = await fetch('https://api.themoviedb.org/3/movie/' + tmdbId + '?language=en-US', { headers: getTmdbHeaders() });
+                        const d = await tmdbRes.json();
+                        return d.poster_path ? 'https://image.tmdb.org/t/p/w342' + d.poster_path : null;
+                    } catch { return null; }
+                }));
+                backgroundPosters.value = posters.filter(p => p !== null);
             } catch(e){}
         };
         
         const fetchProfile = async () => {
             try {
-                const token = localStorage.getItem('trakt_token');
-                const res = await fetch('/api/user/me', { headers: { 'Authorization': 'Bearer ' + token } });
+                const res = await fetch('https://api.trakt.tv/users/me?extended=full', { headers: getTraktHeaders() });
+                if (res.status === 401) { logout(); return; }
                 const data = await res.json();
-                if(data.images?.avatar?.full) {
+                if(data.images && data.images.avatar && data.images.avatar.full) {
                     userAvatar.value = data.images.avatar.full;
                     localStorage.setItem('trakt_avatar', userAvatar.value);
                 }
             } catch(e){}
         };
+
+        const hydrateTrakt = async (items, typeOverride) => {
+            if (!Array.isArray(items)) return [];
+            const promises = items.slice(0, 35).map(async (item) => {
+                let tmdbId, mediaType, airTime;
+                if (item.first_aired) airTime = item.first_aired;
+                else if (item.paused_at) airTime = item.paused_at; 
+                else if (item.liked_at) airTime = item.liked_at; 
+                else if (item.collected_at) airTime = item.collected_at;
+                
+                if (item.show) { tmdbId = item.show.ids.tmdb; mediaType = 'tv'; }
+                else if (item.movie) { tmdbId = item.movie.ids.tmdb; mediaType = 'movie'; }
+                else { tmdbId = item.id; mediaType = item.media_type || 'tv'; }
+                
+                if (!tmdbId) return null;
+                try {
+                    const r = await fetch('https://api.themoviedb.org/3/' + mediaType + '/' + tmdbId + '?language=zh-CN', { headers: getTmdbHeaders() });
+                    if (!r.ok) return null;
+                    const d = await r.json();
+                    
+                    let episodeStill = null;
+                    let currentProgress = null;
+                    let specificRuntime = null;
+
+                    if (mediaType === 'tv' && item.episode) {
+                        try {
+                            const epRes = await fetch('https://api.themoviedb.org/3/tv/' + tmdbId + '/season/' + item.episode.season + '/episode/' + item.episode.number + '?language=zh-CN', { headers: getTmdbHeaders() });
+                            const epData = await epRes.json();
+                            if(epData.still_path) episodeStill = epData.still_path;
+                            if(epData.runtime) specificRuntime = epData.runtime;
+                        } catch(err) {}
+                    }
+                    if (typeOverride === 'continue' && item.progress) currentProgress = item.progress;
+                    
+                    return Object.assign({}, d, { 
+                        media_type: mediaType, trakt_type: typeOverride, air_time_iso: airTime, episode_info: item.episode, 
+                        origin_country: d.origin_country || [], genres: d.genres || [],
+                        runtime_real: specificRuntime || d.runtime || (d.episode_run_time ? d.episode_run_time[0] : null),
+                        episode_image: episodeStill, next_ep_date: d.next_episode_to_air ? d.next_episode_to_air.air_date : null,
+                        last_ep_date: d.last_air_date, last_ep_info: d.last_episode_to_air,
+                        total_seasons: d.number_of_seasons, total_episodes: d.number_of_episodes, status: d.status,
+                        watch_progress: currentProgress, is_tracking: item.is_mine || false 
+                    }); 
+                } catch { return null; }
+            });
+            const resolved = await Promise.all(promises);
+            return resolved.filter(i => i !== null);
+        };
+
+        let fetchTimeout = null;
+        const fetchData = () => {
+            if(!isLoggedIn.value) return;
+            if(fetchTimeout) clearTimeout(fetchTimeout);
+            fetchTimeout = setTimeout(async () => {
+                fetchId.value++;
+                const currentReqId = fetchId.value;
+                loading.value = true; rawData.value = [];
+                
+                try {
+                    let rawList = [];
+                    let overrideType = currentSubTab.value;
+                    const h = getTraktHeaders();
+                    
+                    if(currentSubTab.value === 'continue') {
+                        const res = await fetch('https://api.trakt.tv/sync/playback?limit=50', { headers: h });
+                        if(res.status === 401) { logout(); return; }
+                        const data = await res.json();
+                        const seen = new Set();
+                        for (const item of data) {
+                            const id = item.show && item.show.ids ? item.show.ids.trakt : (item.movie && item.movie.ids ? item.movie.ids.trakt : item.id);
+                            if (id && !seen.has(id)) { seen.add(id); rawList.push(item); }
+                        }
+                    } else if(currentSubTab.value === 'chase') {
+                        const res = await fetch('https://api.trakt.tv/sync/watchlist?sort=added,desc', { headers: h });
+                        if(res.status === 401) { logout(); return; }
+                        rawList = await res.json();
+                    } else if(currentSubTab.value === 'myschedule') {
+                        const today = new Date().toISOString().split('T')[0];
+                        const res = await fetch('https://api.trakt.tv/calendars/my/shows/' + today + '/14', { headers: h });
+                        if(res.status === 401) { logout(); return; }
+                        rawList = await res.json();
+                    } else if(currentSubTab.value === 'trakt_fav') {
+                        const [resShows, resMovies] = await Promise.all([
+                            fetch('https://api.trakt.tv/users/me/favorites/shows', { headers: h }),
+                            fetch('https://api.trakt.tv/users/me/favorites/movies', { headers: h })
+                        ]);
+                        let shows = resShows.ok ? await resShows.json() : [];
+                        let movies = resMovies.ok ? await resMovies.json() : [];
+                        let allItems = shows.concat(movies);
+                        allItems.sort((a, b) => new Date(b.liked_at || 0).getTime() - new Date(a.liked_at || 0).getTime());
+                        rawList = allItems.slice(0, 50);
+                    } else if(currentSubTab.value === 'fav_all') {
+                        const accRes = await fetch('https://api.themoviedb.org/3/account', { headers: getTmdbHeaders() });
+                        const acc = await accRes.json();
+                        const tvRes = await fetch('https://api.themoviedb.org/3/account/' + acc.id + '/favorite/tv?language=zh-CN&sort_by=created_at.desc', { headers: getTmdbHeaders() });
+                        const tv = await tvRes.json();
+                        rawList = tv.results.map(i => Object.assign({}, i, { media_type: 'tv' }));
+                    } else if(currentSubTab.value === 'schedule') {
+                        const today = new Date().toISOString().split('T')[0];
+                        const [myRes, pubRes] = await Promise.all([
+                            fetch('https://api.trakt.tv/calendars/my/shows/' + today + '/7', { headers: h }),
+                            fetch('https://api.trakt.tv/calendars/all/shows/' + today + '/7?extended=full', { headers: h })
+                        ]);
+                        let myData = myRes.ok ? await myRes.json() : [];
+                        let pubData = pubRes.ok ? await pubRes.json() : [];
+                        const seenIds = new Set();
+                        for(let i of myData) { if(i.show && i.show.ids && !seenIds.has(i.show.ids.trakt)) { seenIds.add(i.show.ids.trakt); rawList.push(Object.assign({}, i, {is_mine:true})); }}
+                        const pubAnime = pubData.filter(i => (i.show && i.show.country === 'jp') && (i.show.genres && (i.show.genres.includes('anime') || i.show.genres.includes('animation'))));
+                        for(let i of pubAnime) { if(i.show && i.show.ids && !seenIds.has(i.show.ids.trakt)) { seenIds.add(i.show.ids.trakt); rawList.push(i); }}
+                    } else if(currentSubTab.value === 'trakt_hot') {
+                        const res = await fetch('https://api.trakt.tv/shows/trending?limit=15', { headers: h });
+                        rawList = res.ok ? await res.json() : [];
+                    } else if(currentSubTab.value === 'hot') {
+                        const r = await fetch('https://api.themoviedb.org/3/trending/all/week?language=zh-CN', { headers: getTmdbHeaders() });
+                        if(r.ok) {
+                            const data = await r.json();
+                            if(currentReqId === fetchId.value) rawData.value = data.results;
+                        }
+                    }
+
+                    if (currentSubTab.value !== 'hot') {
+                        const detailed = await hydrateTrakt(rawList, overrideType);
+                        if (currentReqId === fetchId.value) rawData.value = detailed;
+                    }
+                } catch(e) { console.error(e); } finally { 
+                    if (currentReqId === fetchId.value) loading.value = false; 
+                }
+            }, 50);
+        };
+
+        const performAction = async (action, item) => {
+            menuItem.value = null; selectedItem.value = null; showToast("正在提交...");
+            try {
+                let endpoint = '';
+                let payload = {};
+                const mediaObject = { ids: { tmdb: item.id } };
+                if (item.media_type === 'movie') payload = { movies: [mediaObject] };
+                else payload = { shows: [mediaObject] };
+
+                if (action === 'add_chase') endpoint = 'sync/watchlist';         
+                else if (action === 'remove_chase') endpoint = 'sync/watchlist/remove'; 
+                else if (action === 'add_history') endpoint = 'sync/history';    
+                else if (action === 'add_collection') endpoint = 'sync/collection';         
+                else if (action === 'remove_collection') endpoint = 'sync/collection/remove';
+
+                const res = await fetch('https://api.trakt.tv/' + endpoint, {
+                    method: 'POST', 
+                    headers: getTraktHeaders(),
+                    body: JSON.stringify(payload)
+                });
+                if(!res.ok) throw new Error("失败");
+                const map = { 'add_chase': '🔖 已加入追番', 'remove_chase': '🗑️ 已取消追番', 'add_history': '🎉 标记为已看', 'add_collection': '❤️ 已收藏', 'remove_collection': '💔 已取消收藏'};
+                showToast(map[action] || '操作成功');
+                setTimeout(fetchData, 1000);
+            } catch(e) { showToast("❌ 操作失败"); }
+        };
+
+        const handleAvatarError = (e) => { e.target.src = 'https://ui-avatars.com/api/?name=Me&background=random&color=fff'; };
+        const logout = () => { localStorage.removeItem('trakt_token'); localStorage.removeItem('trakt_avatar'); isLoggedIn.value = false; showLogoutModal.value = false; rawData.value = []; userAvatar.value = ''; fetchBackdrop(); };
+        const showToast = (msg) => { toastMsg.value = msg; setTimeout(() => { toastMsg.value = ''; }, 2500); };
         
-        // 🔥 头像加载失败回落
-        const handleAvatarError = (e) => {
-            e.target.src = 'https://ui-avatars.com/api/?name=Me&background=random&color=fff';
-        };
-
-        const logout = () => {
-            localStorage.removeItem('trakt_token');
-            localStorage.removeItem('trakt_avatar');
-            isLoggedIn.value = false;
-            showLogoutModal.value = false;
-            rawData.value = [];
-            userAvatar.value = '';
-            fetchBackdrop(); 
-        };
-
         const subTabs = computed(() => {
-            if (currentMainTab.value === 'mine') return [ 
-                { key: 'continue', name: '继续观看' },
-                { key: 'chase',    name: '我的追番' },
-                { key: 'myschedule', name: '即将播出' },
-                { key: 'trakt_fav',  name: 'Trakt红心' }
-            ]; 
+            if (currentMainTab.value === 'mine') return [ { key: 'continue', name: '继续观看' }, { key: 'chase', name: '我的追番' }, { key: 'myschedule', name: '即将播出' }, { key: 'trakt_fav', name: 'Trakt红心' } ]; 
             else if (currentMainTab.value === 'schedule') return []; 
             else return [ { key: 'trakt_hot', name: '热门趋势' }, { key: 'hot', name: '本周热榜' } ];
         });
@@ -679,107 +585,38 @@ createApp({
             return list;
         });
 
-        const fetchData = async () => {
-            if(!isLoggedIn.value) return;
-            fetchId.value++;
-            const currentReqId = fetchId.value;
-            
-            loading.value = true; rawData.value = []; let url = '';
-            if(currentSubTab.value === 'continue') url = '/api/user/continue';
-            else if(currentSubTab.value === 'chase') url = '/api/user/watchlist';
-            else if(currentSubTab.value === 'myschedule') url = '/api/user/myschedule';
-            else if(currentSubTab.value === 'trakt_fav') url = '/api/user/trakt_fav';
-            else if(currentSubTab.value === 'fav_all') url = '/api/user/favs';
-            else url = \`/api/list?tab=\${currentSubTab.value}\`;
-            
-            try {
-                const token = localStorage.getItem('trakt_token');
-                const res = await fetch(url, {
-                    headers: { 'Authorization': 'Bearer ' + token }
-                });
-                
-                if (currentReqId !== fetchId.value) return;
-
-                if(res.status === 401) { logout(); return; }
-                const data = await res.json();
-                if(data.error) throw new Error(data.error);
-                rawData.value = Array.isArray(data) ? data : (data.results || []);
-            } catch(e) { console.error(e); } finally { 
-                if (currentReqId === fetchId.value) loading.value = false; 
-            }
-        };
-
-        const performAction = async (action, item) => {
-            menuItem.value = null; selectedItem.value = null; showToast("正在提交...");
-            try {
-                const token = localStorage.getItem('trakt_token');
-                const res = await fetch('/api/action', {
-                    method: 'POST', 
-                    headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token},
-                    body: JSON.stringify({ action, item })
-                });
-                if(!res.ok) throw new Error("失败");
-                const map = { 'add_chase': '🔖 已加入追番', 'remove_chase': '🗑️ 已取消追番', 'add_history': '🎉 标记为已看', 'add_collection': '❤️ 已收藏', 'remove_collection': '💔 已取消收藏'};
-                showToast(map[action] || '操作成功');
-                setTimeout(fetchData, 1000);
-            } catch(e) { showToast("❌ 操作失败"); }
-        };
-
-        const showToast = (msg) => { toastMsg.value = msg; setTimeout(() => toastMsg.value = '', 2500); };
-        const switchMainTab = (tab) => { 
-            currentMainTab.value = tab; 
-            if(tab === 'mine') currentSubTab.value = 'continue'; 
-            else if(tab === 'schedule') currentSubTab.value = 'schedule'; 
-            else currentSubTab.value = 'trakt_hot'; 
-            fetchData(); 
-        };
-        
-        const handleMineClick = () => {
-            const now = Date.now();
-            if (currentMainTab.value === 'mine' && (now - lastMineClickTime.value < 300)) {
-                showLogoutModal.value = true;
-            } else {
-                switchMainTab('mine');
-            }
-            lastMineClickTime.value = now;
-        };
+        const switchMainTab = (tab) => { currentMainTab.value = tab; if(tab === 'mine') currentSubTab.value = 'continue'; else if(tab === 'schedule') currentSubTab.value = 'schedule'; else currentSubTab.value = 'trakt_hot'; };
+        const handleMineClick = () => { const now = Date.now(); if (currentMainTab.value === 'mine' && (now - lastMineClickTime.value < 300)) { showLogoutModal.value = true; } else { switchMainTab('mine'); } lastMineClickTime.value = now; };
 
         watch([currentSubTab, selectedWeekDay], () => { if(currentMainTab.value !== 'schedule') fetchData(); });
         watch(currentMainTab, () => { fetchData(); })
 
-        const formatSubtitle = (item) => { if (item.episode_info) return \`S\${item.episode_info.season} E\${item.episode_info.number}\`; if (item.total_episodes) return \`共 \${item.total_episodes} 集\`; return item.original_name || item.title || 'Movie'; };
-        const formatDuration = (item) => { let t = item.runtime_real; if (!t && item.media_type === 'tv') { const isAnime = (item.origin_country?.includes('JP')) || (item.genres?.some(g => g.name === 'Animation' || g.name === '动画')); t = isAnime ? 24 : 45; } if (!t || t === 0) return '未知'; return \`\${t}分钟\`; };
-        const formatTraktStats = (item) => { if (item.media_type === 'movie') return 'Movie'; let total = item.total_episodes || 0; let current = item.episode_info ? item.episode_info.number : 0; let remaining = Math.max(0, total - current); if (item.status === 'Ended' && remaining <= 0) return '已完结'; let runtimeStr = formatDuration(item); let runtime = parseInt(runtimeStr) || 24; let minsLeft = remaining * runtime; let timeStr = minsLeft > 60 ? \`\${Math.floor(minsLeft/60)}小时 \${minsLeft%60}分\` : \`\${minsLeft}分钟\`; return \`剩余\${remaining}集 · \${timeStr}\`; };
-        const formatScheduleInfo = (item) => { if (item.watch_progress) return \`已看 \${parseFloat(item.watch_progress).toFixed(1)}%\`; if (item.status === 'Returning Series' && item.next_ep_date) { const day = new Date(item.next_ep_date).getDay(); const weekStr = ['日','一','二','三','四','五','六'][day]; return \`每周\${weekStr}更新\`; } if (item.status === 'Ended' && item.first_air_date && item.last_ep_date) { const start = item.first_air_date.slice(0,4); const end = item.last_ep_date.slice(0,4); return \`\${start} - \${end}\`; } if(item.release_date) return item.release_date; if(item.first_air_date) return \`首播: \${item.first_air_date}\`; return '未知日程'; };
-        const formatCapsuleRight = (item) => { if (item.media_type === 'movie') { return item.release_date ? item.release_date.split('-')[0] : '电影'; } const total = item.total_episodes || 0; const lastEp = item.last_ep_info; const current = lastEp ? lastEp.episode_number : 0; if (total > 0) { if (item.status === 'Ended' || item.status === 'Canceled') return \`\${total}集全\`; if (current > 0) return \`\${current}/\${total}集\`; return \`共\${total}集\`; } if (item.status === 'Returning Series') return '更新中'; if (item.status === 'Ended') return '已完结'; return 'TV Series'; };
-        const getRelativeDateLabel = (item) => { const dateStr = item.air_time_iso || item.first_air_date; if (!dateStr) return ''; const targetDate = new Date(dateStr); const today = new Date(); today.setHours(0,0,0,0); const targetCheck = new Date(targetDate); targetCheck.setHours(0,0,0,0); const diffTime = targetCheck - today; const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); if (diffDays === 0) return '今天'; if (diffDays === 1) return '明天'; if (diffDays === 2) return '后天'; const weekStr = ['周日','周一','周二','周三','周四','周五','周六'][targetDate.getDay()]; if (Math.abs(diffDays) > 7) return \`\${targetDate.getMonth()+1}/\${targetDate.getDate()}\`; return weekStr; };
+        const formatSubtitle = (item) => { if (item.episode_info) return 'S' + item.episode_info.season + ' E' + item.episode_info.number; if (item.total_episodes) return '共 ' + item.total_episodes + ' 集'; return item.original_name || item.title || 'Movie'; };
+        const formatDuration = (item) => { let t = item.runtime_real; if (!t && item.media_type === 'tv') { const isAnime = (item.origin_country && item.origin_country.includes('JP')) || (item.genres && item.genres.some(g => g.name === 'Animation' || g.name === '动画')); t = isAnime ? 24 : 45; } if (!t || t === 0) return '未知'; return t + '分钟'; };
+        const formatTraktStats = (item) => { if (item.media_type === 'movie') return 'Movie'; let total = item.total_episodes || 0; let current = item.episode_info ? item.episode_info.number : 0; let remaining = Math.max(0, total - current); if (item.status === 'Ended' && remaining <= 0) return '已完结'; let runtimeStr = formatDuration(item); let runtime = parseInt(runtimeStr) || 24; let minsLeft = remaining * runtime; let timeStr = minsLeft > 60 ? Math.floor(minsLeft/60) + '小时 ' + (minsLeft%60) + '分' : minsLeft + '分钟'; return '剩余' + remaining + '集 · ' + timeStr; };
+        const formatScheduleInfo = (item) => { if (item.watch_progress) return '已看 ' + parseFloat(item.watch_progress).toFixed(1) + '%'; if (item.status === 'Returning Series' && item.next_ep_date) { const day = new Date(item.next_ep_date).getDay(); const weekStr = ['日','一','二','三','四','五','六'][day]; return '每周' + weekStr + '更新'; } if (item.status === 'Ended' && item.first_air_date && item.last_ep_date) { const start = item.first_air_date.slice(0,4); const end = item.last_ep_date.slice(0,4); return start + ' - ' + end; } if(item.release_date) return item.release_date; if(item.first_air_date) return '首播: ' + item.first_air_date; return '未知日程'; };
+        const formatCapsuleRight = (item) => { if (item.media_type === 'movie') { return item.release_date ? item.release_date.split('-')[0] : '电影'; } const total = item.total_episodes || 0; const lastEp = item.last_ep_info; const current = lastEp ? lastEp.episode_number : 0; if (total > 0) { if (item.status === 'Ended' || item.status === 'Canceled') return total + '集全'; if (current > 0) return current + '/' + total + '集'; return '共' + total + '集'; } if (item.status === 'Returning Series') return '更新中'; if (item.status === 'Ended') return '已完结'; return 'TV Series'; };
+        const getRelativeDateLabel = (item) => { const dateStr = item.air_time_iso || item.first_air_date; if (!dateStr) return ''; const targetDate = new Date(dateStr); const today = new Date(); today.setHours(0,0,0,0); const targetCheck = new Date(targetDate); targetCheck.setHours(0,0,0,0); const diffTime = targetCheck - today; const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); if (diffDays === 0) return '今天'; if (diffDays === 1) return '明天'; if (diffDays === 2) return '后天'; const weekStr = ['周日','周一','周二','周三','周四','周五','周六'][targetDate.getDay()]; if (Math.abs(diffDays) > 7) return (targetDate.getMonth()+1) + '/' + targetDate.getDate(); return weekStr; };
         const formatVotes = (num) => { if(!num) return '0'; if(num > 1000) return (num/1000).toFixed(1) + 'k'; return num; };
         const getPoster = (i) => i.poster_path ? TMDB_IMG + 'w200' + i.poster_path : 'https://via.placeholder.com/200x300/e0e0e0/ffffff?text=No+Poster';
         const getBackdrop = (i) => { if (i.episode_image) return TMDB_IMG + 'w780' + i.episode_image; if (i.backdrop_path) return TMDB_IMG + 'w780' + i.backdrop_path; return 'https://via.placeholder.com/600x340/e0e0e0/ffffff?text=TMDB&Trakt'; };
         const openModal = (item) => { selectedItem.value = item; };
         const openMenu = (item) => { menuItem.value = item; };
         
-        // 🔥 V38 精确秒级计算
         const getWatchedTime = (item) => {
-            const totalMinutes = item.runtime_real || 0; // 强制使用 TMDB 单集时长
+            const totalMinutes = item.runtime_real || 0;
             const progress = item.watch_progress || 0;
-            
-            // 转换为秒
             const totalWatchedSeconds = Math.floor(totalMinutes * 60 * (progress / 100));
-            
             const h = Math.floor(totalWatchedSeconds / 3600);
             const m = Math.floor((totalWatchedSeconds % 3600) / 60);
             const s = totalWatchedSeconds % 60;
-            
             const hStr = h.toString().padStart(2, '0');
             const mStr = m.toString().padStart(2, '0');
             const sStr = s.toString().padStart(2, '0');
-            
-            if (h > 0) return \`\${hStr}:\${mStr}:\${sStr}\`;
-            return \`\${mStr}:\${sStr}\`;
+            if (h > 0) return hStr + ':' + mStr + ':' + sStr;
+            return mStr + ':' + sStr;
         };
 
-        onMounted(() => { if(isLoggedIn.value) fetchData(); });
         return { currentMainTab, switchMainTab, currentSubTab, subTabs, filterType, weekDays, selectedWeekDay, loading, processedList, getPageTitle, selectedItem, menuItem, toastMsg, openModal, openMenu, performAction, getPoster, getBackdrop, formatSubtitle, formatDuration, formatScheduleInfo, formatCapsuleRight, formatTraktStats, getRelativeDateLabel, formatVotes, isLoggedIn, logout, handleMineClick, showLogoutModal, backgroundPosters, getWatchedTime, userAvatar, handleAvatarError };
     }
 }).mount('#app-container');
