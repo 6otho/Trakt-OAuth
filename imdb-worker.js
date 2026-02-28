@@ -91,8 +91,42 @@ const htmlContent = `
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700;900&display=swap" rel="stylesheet">
 <style>
-  :root { --bg-app: linear-gradient(135deg, #f0f2f5 0%, #d9e2ec 100%); --bg-desktop: #e0e5ec; --text-primary: #111; --text-secondary: #555; --text-tertiary: #666; --card-bg: #fff; --sheet-bg: #ffffff; --card-shadow: 0 8px 20px -6px rgba(0,0,0,0.08); --glass-header: rgba(240,242,245,0.85); --glass-nav: rgba(255,255,255,0.75); --glass-border: rgba(255,255,255,0.5); --accent-purple: #6D28D9; --pill-bg: rgba(255,255,255,0.6); --pill-active-text: #fff; --capsule-bg: rgba(0,0,0,0.06); --capsule-left-bg: #000; --capsule-left-text: #fff; --capsule-right-text: #000; --btn-bg: #111; --btn-text: #fff; --mask-gradient: linear-gradient(90deg, #EAECEF 28%, rgba(234,236,239,0.92) 55%, rgba(255,255,255,0.2) 100%); --overview-text: #222; --action-sheet-bg: rgba(255,255,255,0.85); }
-  @media (prefers-color-scheme: dark) { :root { --bg-app: linear-gradient(135deg, #121212 0%, #1e1e24 100%); --bg-desktop: #000; --text-primary: #f5f5f5; --text-secondary: #a0a0a0; --text-tertiary: #888; --card-bg: #1e1e1e; --sheet-bg: #1e1e1e; --card-shadow: 0 8px 20px -6px rgba(0,0,0,0.4); --glass-header: rgba(18,18,18,0.85); --glass-nav: rgba(30,30,30,0.75); --glass-border: rgba(255,255,255,0.1); --accent-purple: #8b5cf6; --pill-bg: rgba(255,255,255,0.1); --pill-active-text: #fff; --capsule-bg: rgba(255,255,255,0.1); --capsule-left-bg: #f5f5f5; --capsule-left-text: #000; --capsule-right-text: #ddd; --btn-bg: #fff; --btn-text: #000; --mask-gradient: linear-gradient(90deg, #1e1e1e 28%, rgba(30,30,30,0.92) 55%, rgba(30,30,30,0.2) 100%); --overview-text: #fff; --action-sheet-bg: rgba(30,30,30,0.85); } }
+  /* 🌟 核心：引入了白天/黑夜的独立渐变系统 🌟 */
+  :root { 
+    --bg-app: linear-gradient(135deg, #f0f2f5 0%, #d9e2ec 100%); 
+    --bg-desktop: #e0e5ec; --text-primary: #111; --text-secondary: #555; --text-tertiary: #666; 
+    --card-bg: #fff; --sheet-bg: #ffffff; --glass-header: rgba(240,242,245,0.85); --glass-nav: rgba(255,255,255,0.75); --glass-border: rgba(255,255,255,0.5); 
+    --accent-purple: #6D28D9; --pill-bg: rgba(255,255,255,0.6); --pill-active-text: #fff; 
+    --capsule-bg: rgba(0,0,0,0.06); --capsule-left-bg: #000; --capsule-left-text: #fff; --capsule-right-text: #000; 
+    --btn-bg: #111; --btn-text: #fff; --overview-text: #222; --action-sheet-bg: rgba(255,255,255,0.85); 
+    
+    /* 白天模式的卡片专属颜色 - 深空灰蓝，柔和且托得住白字 */
+    --ab-card-bg: #242632;
+    --ab-card-border: rgba(0,0,0,0.1);
+    --ab-card-shadow: 0 10px 25px -6px rgba(0,0,0,0.2);
+    --ab-grad-1: rgba(36,38,50,1);
+    --ab-grad-2: rgba(36,38,50,0.2);
+    --ab-grad-3: rgba(36,38,50,0.85);
+  }
+  @media (prefers-color-scheme: dark) { 
+    :root { 
+      --bg-app: linear-gradient(135deg, #121212 0%, #1e1e24 100%); 
+      --bg-desktop: #000; --text-primary: #f5f5f5; --text-secondary: #a0a0a0; --text-tertiary: #888; 
+      --card-bg: #1e1e1e; --sheet-bg: #1e1e1e; --glass-header: rgba(18,18,18,0.85); --glass-nav: rgba(30,30,30,0.75); --glass-border: rgba(255,255,255,0.1); 
+      --accent-purple: #8b5cf6; --pill-bg: rgba(255,255,255,0.1); --pill-active-text: #fff; 
+      --capsule-bg: rgba(255,255,255,0.1); --capsule-left-bg: #f5f5f5; --capsule-left-text: #000; --capsule-right-text: #ddd; 
+      --btn-bg: #fff; --btn-text: #000; --overview-text: #fff; --action-sheet-bg: rgba(30,30,30,0.85); 
+
+      /* 夜晚模式的卡片专属颜色 - 极致深邃黑 */
+      --ab-card-bg: #0a0b10;
+      --ab-card-border: rgba(255,255,255,0.08);
+      --ab-card-shadow: 0 12px 24px rgba(0,0,0,0.4);
+      --ab-grad-1: rgba(10,11,16,1);
+      --ab-grad-2: rgba(10,11,16,0.2);
+      --ab-grad-3: rgba(10,11,16,0.85);
+    } 
+  }
+  
   html, body { width: 100%; height: 100%; margin: 0; padding: 0; overflow: hidden; font-family: 'Roboto', sans-serif; background: var(--bg-app); -webkit-tap-highlight-color: transparent; overscroll-behavior: none; position: fixed; inset: 0; color: var(--text-primary); }
   #app-container { width: 100%; height: 100%; position: relative; display: flex; flex-direction: column; overflow: hidden; }
   @media (min-width: 768px) { body { background-color: var(--bg-desktop); display: flex; justify-content: center; align-items: center; position: static; } #app-container { width: 100%; max-width: 430px; height: 90vh; max-height: 880px; position: relative; border-radius: 44px; border: 8px solid #2a2a2a; box-shadow: 0 0 60px rgba(0,0,0,0.6); overflow: hidden; background: var(--bg-app); } }
@@ -116,25 +150,25 @@ const htmlContent = `
   .scroll-content::-webkit-scrollbar { display: none; } 
   .list-container { display: flex; flex-direction: column; gap: 14px; }
   
-  /* ================= 🌟 全新大图横幅卡片样式 🌟 ================= */
-  .anime-banner-card { position: relative; width: 100%; height: 130px; border-radius: 14px; background: #0a0b10; border: 1px solid rgba(255,255,255,0.08); overflow: hidden; display: flex; align-items: center; justify-content: space-between; box-shadow: 0 12px 24px rgba(0,0,0,0.4); transition: transform 0.2s cubic-bezier(0.2, 0.8, 0.2, 1), box-shadow 0.2s; cursor: pointer; color: #fff; margin-bottom: 4px; }
-  .anime-banner-card:active { transform: scale(0.96); box-shadow: 0 5px 15px rgba(0,0,0,0.5); }
+  /* ================= 🌟 智能渐变卡片样式 🌟 ================= */
+  .anime-banner-card { position: relative; width: 100%; height: 130px; border-radius: 14px; background: var(--ab-card-bg); border: 1px solid var(--ab-card-border); overflow: hidden; display: flex; align-items: center; justify-content: space-between; box-shadow: var(--ab-card-shadow); transition: transform 0.2s cubic-bezier(0.2, 0.8, 0.2, 1), box-shadow 0.2s; cursor: pointer; color: #fff; margin-bottom: 4px; }
+  .anime-banner-card:active { transform: scale(0.96); box-shadow: 0 5px 15px rgba(0,0,0,0.3); }
   .ab-bg { position: absolute; inset: 0; background-position: center 20%; background-size: cover; z-index: 0; opacity: 0.85; mask-image: linear-gradient(90deg, transparent 0%, rgba(0,0,0,0.8) 40%, rgba(0,0,0,0.9) 70%, transparent 100%); -webkit-mask-image: linear-gradient(90deg, transparent 5%, rgba(0,0,0,0.7) 40%, rgba(0,0,0,0.9) 65%, transparent 100%); }
-  .ab-gradient { position: absolute; inset: 0; background: linear-gradient(90deg, rgba(10,11,16,1) 15%, rgba(10,11,16,0.2) 50%, rgba(10,11,16,0.85) 85%); z-index: 1; pointer-events: none; }
+  
+  /* 使用动态色彩变量进行渐变 */
+  .ab-gradient { position: absolute; inset: 0; background: linear-gradient(90deg, var(--ab-grad-1) 15%, var(--ab-grad-2) 50%, var(--ab-grad-3) 85%); z-index: 1; pointer-events: none; }
   
   .ab-content-left { position: relative; z-index: 2; display: flex; align-items: center; padding-left: 14px; height: 100%; width: 65%; pointer-events: none; }
   .ab-index { width: 22px; height: 22px; background: #fff; color: #000; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 900; font-size: 13px; margin-right: 14px; flex-shrink: 0; box-shadow: 0 4px 10px rgba(0,0,0,0.6); }
   
   .ab-text-col { display: flex; flex-direction: column; justify-content: center; align-items: flex-start; gap: 2px; overflow: hidden; }
-  .ab-title-logo { max-width: 140px; height: 32px; object-fit: contain; object-position: left bottom; filter: drop-shadow(2px 2px 4px rgba(0,0,0,0.6)); margin-bottom: 4px; }
+  .ab-title-logo { max-width: 130px; height: 32px; object-fit: contain; object-position: left bottom; filter: drop-shadow(2px 2px 4px rgba(0,0,0,0.6)); margin-bottom: 4px; }
   .ab-eng-title { font-size: 12px; color: rgba(255,255,255,0.8); letter-spacing: 0.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-family: Georgia, 'Times New Roman', Times, serif; font-style: italic; }
   .ab-main-title { font-family: 'Arial Black', Impact, sans-serif; font-size: 24px; font-weight: 900; line-height: 1.1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-transform: uppercase; text-shadow: 2px 2px 6px rgba(0,0,0,0.9), 0 0 10px rgba(0,0,0,0.5); letter-spacing: -0.5px; margin-bottom: 4px; }
   
-  /* 🌟 新增：播放提示 (已看XX% 或 首播日期) 🌟 */
   .ab-play-hint { font-size: 11px; color: rgba(255,255,255,0.8); display: flex; align-items: center; gap: 5px; font-weight: 600; text-shadow: 1px 1px 3px rgba(0,0,0,0.8); margin-bottom: 4px; }
   .ab-play-hint i { font-size: 12px; }
 
-  /* 🌟 新增：高级半透明胶囊进度条 🌟 */
   .ab-capsule-bar { position: relative; width: 140px; height: 22px; border-radius: 99px; background: rgba(255,255,255,0.15); border: 1px solid rgba(255,255,255,0.4); display: flex; align-items: center; justify-content: space-between; overflow: hidden; box-shadow: 0 4px 10px rgba(0,0,0,0.4); backdrop-filter: blur(4px); }
   .ab-capsule-fill { position: absolute; left: 0; top: 0; bottom: 0; background: rgba(255,255,255,0.3); z-index: 1; border-radius: 99px 0 0 99px; transition: width 0.3s ease; }
   .ab-capsule-left { background: #000; color: #fff; padding: 0 10px; height: 100%; display: flex; align-items: center; justify-content: center; border-radius: 99px; font-size: 10px; font-weight: 900; z-index: 2; position: relative; letter-spacing: 0.5px; box-shadow: 2px 0 5px rgba(0,0,0,0.3); }
@@ -157,7 +191,6 @@ const htmlContent = `
   .nav-btn.active .user-avatar { border-color: var(--accent-purple); transform: translateY(-3px) scale(1.05); }
   .user-avatar { width: 28px; height: 28px; border-radius: 50%; background: #ccc; border: 2px solid transparent; transition: all 0.3s; box-shadow: 0 2px 5px rgba(0,0,0,0.15); object-fit: cover; }
   
-  /* 🌟 修复黑白模式的详情弹窗 🌟 */
   .modal-overlay { position: absolute; inset: 0; z-index: 100; background: rgba(0,0,0,0.6); backdrop-filter: blur(8px); display: flex; align-items: flex-end; transition: opacity 0.3s; }
   .detail-sheet { width: 100%; max-height: 85%; background: var(--sheet-bg); color: var(--text-primary); border-radius: 32px 32px 0 0; padding-bottom: calc(30px + env(safe-area-inset-bottom)); box-shadow: 0 -10px 50px rgba(0,0,0,0.35); display: flex; flex-direction: column; overflow: hidden; animation: slideUp 0.4s cubic-bezier(0.19, 1, 0.22, 1); }
   @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
@@ -280,7 +313,7 @@ const htmlContent = `
                     <i class="fas fa-ellipsis-v"></i>
                 </div>
 
-                <!-- 🌟 左侧：重新排版，支持日历/进度提示与半透明胶囊进度条 🌟 -->
+                <!-- 🌟 左侧：支持日历/进度提示与半透明胶囊进度条 🌟 -->
                 <div class="ab-content-left">
                     <div class="ab-index">{{ index + 1 }}</div>
                     
@@ -297,7 +330,7 @@ const htmlContent = `
                             <i :class="getPlayHintIcon(item)"></i> {{ getPlayHint(item) }}
                         </div>
 
-                        <!-- 🌟 核心：半透明白边胶囊进度条 🌟 -->
+                        <!-- 🌟 半透明白边胶囊进度条 🌟 -->
                         <div class="ab-capsule-bar">
                             <div class="ab-capsule-fill" :style="{width: (item.watch_progress || 0) + '%'}"></div>
                             <div class="ab-capsule-left">{{ formatDuration(item) }}</div>
@@ -458,7 +491,7 @@ createApp({
                     if (!r.ok) return null;
                     const d = await r.json();
 
-                    // 🌟 核心修改：针对外国剧强制要求英文 Logo 🌟
+                    // 🌟 针对外国剧强制要求英文 Logo 🌟
                     let showLogo = null;
                     if (d.images && d.images.logos && d.images.logos.length > 0) {
                         const zhLogo = d.images.logos.find(l => l.iso_639_1 === 'zh');
@@ -467,13 +500,10 @@ createApp({
                         
                         const countries = d.origin_country || [];
                         if (countries.some(c => ['CN', 'TW', 'HK'].includes(c))) {
-                            // 国产/港台剧：优先中文
                             showLogo = (zhLogo || enLogo || d.images.logos[0]).file_path;
                         } else if (countries.includes('JP')) {
-                            // 日漫/日剧：优先日文或中文
                             showLogo = (jaLogo || zhLogo || enLogo || d.images.logos[0]).file_path;
                         } else {
-                            // 外国剧（欧美韩等）：绝对优先英文
                             showLogo = (enLogo || zhLogo || d.images.logos[0]).file_path;
                         }
                     }
@@ -673,11 +703,9 @@ createApp({
             return null;
         };
 
-        // 🌟 新增：获取进度条右侧文字 🌟
         const getCapsuleRightText = (item) => {
             if (item.media_type === 'movie') return '电影';
             const total = item.total_episodes || '?';
-            // 提取当前集数，优先用 continue 列表里的 episode_info，如果没有则用最后播出集数
             let current = item.episode_info ? item.episode_info.number : (item.last_ep_info ? item.last_ep_info.episode_number : 0);
             if (current > 0) {
                 return current + '/' + total + '集';
@@ -686,7 +714,6 @@ createApp({
             return '更新至 ' + total + ' 集';
         };
 
-        // 🌟 新增：获取上方播放提示文字 🌟
         const getPlayHint = (item) => {
             if (item.watch_progress > 0) return '已看 ' + parseFloat(item.watch_progress).toFixed(1) + '%';
             if (item.next_ep_date) return '下集: ' + item.next_ep_date;
@@ -695,7 +722,6 @@ createApp({
             return '';
         };
 
-        // 🌟 新增：获取上方播放提示图标 🌟
         const getPlayHintIcon = (item) => {
             if (item.watch_progress > 0) return 'far fa-calendar-check';
             return 'far fa-calendar-alt';
