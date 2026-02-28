@@ -17,8 +17,8 @@ export default {
 
         // 🔐 1. OAuth 认证流程 (获取 Code 重定向)
         if (path === '/auth/login') {
-            const redirectUri = url.origin + '/auth/callback';
-            const traktUrl = 'https://trakt.tv/oauth/authorize?response_type=code&client_id=' + env.TRAKT_ID + '&redirect_uri=' + encodeURIComponent(redirectUri);
+            const redirectUri = `${url.origin}/auth/callback`;
+            const traktUrl = `https://trakt.tv/oauth/authorize?response_type=code&client_id=${env.TRAKT_ID}&redirect_uri=${encodeURIComponent(redirectUri)}`;
             return Response.redirect(traktUrl, 302);
         }
 
@@ -27,48 +27,49 @@ export default {
             const code = url.searchParams.get('code');
             if (!code) return new Response("Login Failed: No Code provided", { status: 400 });
 
-            const callbackHtml = '<!DOCTYPE html>\n' +
-            '<html lang="zh-CN"><head><meta name="viewport" content="width=device-width, initial-scale=1"></head>\n' +
-            '<body style="background:#111;color:#fff;text-align:center;padding:50px;font-family:sans-serif;">\n' +
-            '<h3>🔄 正在获取授权...</h3>\n' +
-            '<script>\n' +
-            '    async function getToken() {\n' +
-            '        try {\n' +
-            '            const res = await fetch("https://api.trakt.tv/oauth/token", {\n' +
-            '                method: "POST",\n' +
-            '                headers: { "Content-Type": "application/json" },\n' +
-            '                body: JSON.stringify({\n' +
-            '                    code: "' + code + '",\n' +
-            '                    client_id: "' + env.TRAKT_ID + '",\n' +
-            '                    client_secret: "' + env.TRAKT_SECRET + '",\n' +
-            '                    redirect_uri: "' + url.origin + '/auth/callback",\n' +
-            '                    grant_type: "authorization_code"\n' +
-            '                })\n' +
-            '            });\n' +
-            '            const data = await res.json();\n' +
-            '            if(data.access_token) {\n' +
-            '                localStorage.setItem("trakt_token", data.access_token);\n' +
-            '                localStorage.setItem("trakt_refresh", data.refresh_token);\n' +
-            '                document.body.innerHTML = "<h3>✅ 登录成功，正在跳转...</h3>";\n' +
-            '                setTimeout(function(){ window.location.href = "/"; }, 300);\n' +
-            '            } else {\n' +
-            '                document.body.innerHTML = "<h3>❌ 授权失败</h3><p>" + (data.error_description || JSON.stringify(data)) + "</p><button onclick=\'window.location.href=\"/\"\' style=\'padding:10px 20px;border-radius:20px;background:#fff;color:#000;\'>返回首页</button>";\n' +
-            '            }\n' +
-            '        } catch(e) {\n' +
-            '            document.body.innerHTML = "<h3>❌ 网络错误</h3><p>授权请求失败：" + e.message + "</p><button onclick=\'window.location.href=\"/\"\' style=\'padding:10px 20px;border-radius:20px;background:#fff;color:#000;\'>返回首页</button>";\n' +
-            '        }\n' +
-            '    }\n' +
-            '    getToken();\n' +
-            '</script>\n' +
-            '</body></html>';
+            const callbackHtml = `
+            <!DOCTYPE html>
+            <html lang="zh-CN"><head><meta name="viewport" content="width=device-width, initial-scale=1"></head>
+            <body style="background:#111;color:#fff;text-align:center;padding:50px;font-family:sans-serif;">
+            <h3>🔄 正在获取授权...</h3>
+            <script>
+                async function getToken() {
+                    try {
+                        const res = await fetch('https://api.trakt.tv/oauth/token', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                code: '${code}',
+                                client_id: '${env.TRAKT_ID}',
+                                client_secret: '${env.TRAKT_SECRET}',
+                                redirect_uri: '${url.origin}/auth/callback',
+                                grant_type: 'authorization_code'
+                            })
+                        });
+                        const data = await res.json();
+                        if(data.access_token) {
+                            localStorage.setItem('trakt_token', data.access_token);
+                            localStorage.setItem('trakt_refresh', data.refresh_token);
+                            document.body.innerHTML = "<h3>✅ 登录成功，正在跳转...</h3>";
+                            setTimeout(function(){ window.location.href = '/'; }, 300);
+                        } else {
+                            document.body.innerHTML = "<h3>❌ 授权失败</h3><p>" + (data.error_description || JSON.stringify(data)) + "</p><button onclick='window.location.href=\"/\"' style='padding:10px 20px;border-radius:20px;background:#fff;color:#000;'>返回首页</button>";
+                        }
+                    } catch(e) {
+                        document.body.innerHTML = "<h3>❌ 网络错误</h3><p>授权请求失败：" + e.message + "</p><button onclick='window.location.href=\"/\"' style='padding:10px 20px;border-radius:20px;background:#fff;color:#000;'>返回首页</button>";
+                    }
+                }
+                getToken();
+            </script>
+            </body></html>`;
             return new Response(callbackHtml, { headers: { 'content-type': 'text/html;charset=UTF-8' } });
         }
 
         // 🚀 3. 主程序注入 (将环境变量安全注入给前端直接使用)
-        const envScript = '<script>window.ENV = ' + JSON.stringify({
+        const envScript = `<script>window.ENV = ${JSON.stringify({
             TRAKT_ID: env.TRAKT_ID,
             TMDB_TOKEN: env.TMDB_TOKEN
-        }) + ';</script>';
+        })};</script>`;
 
         const finalHtml = htmlContent.replace('<!-- ENV_INJECTION -->', envScript);
         return new Response(finalHtml, { headers: { 'content-type': 'text/html;charset=UTF-8' } });
@@ -76,7 +77,8 @@ export default {
 };
 
 // ================= 🎨 前端 Vue UI =================
-const htmlContent = `<!DOCTYPE html>
+const htmlContent = `
+<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
@@ -89,8 +91,8 @@ const htmlContent = `<!DOCTYPE html>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700;900&display=swap" rel="stylesheet">
 <style>
-  :root { --bg-app: linear-gradient(135deg, #f0f2f5 0%, #d9e2ec 100%); --bg-desktop: #e0e5ec; --text-primary: #111; --text-secondary: #555; --text-tertiary: #666; --card-bg: #fff; --card-shadow: 0 8px 20px -6px rgba(0,0,0,0.08); --glass-header: rgba(240,242,245,0.85); --glass-nav: rgba(255,255,255,0.75); --glass-border: rgba(255,255,255,0.5); --accent-purple: #6D28D9; --pill-bg: rgba(255,255,255,0.6); --pill-active-text: #fff; --capsule-bg: rgba(0,0,0,0.06); --capsule-left-bg: #000; --capsule-left-text: #fff; --capsule-right-text: #000; --btn-bg: #111; --btn-text: #fff; --mask-gradient: linear-gradient(90deg, #EAECEF 28%, rgba(234,236,239,0.92) 55%, rgba(255,255,255,0.2) 100%); --overview-text: #222; --action-sheet-bg: rgba(255,255,255,0.85); }
-  @media (prefers-color-scheme: dark) { :root { --bg-app: linear-gradient(135deg, #121212 0%, #1e1e24 100%); --bg-desktop: #000; --text-primary: #f5f5f5; --text-secondary: #a0a0a0; --text-tertiary: #888; --card-bg: #1e1e1e; --card-shadow: 0 8px 20px -6px rgba(0,0,0,0.4); --glass-header: rgba(18,18,18,0.85); --glass-nav: rgba(30,30,30,0.75); --glass-border: rgba(255,255,255,0.1); --accent-purple: #8b5cf6; --pill-bg: rgba(255,255,255,0.1); --pill-active-text: #fff; --capsule-bg: rgba(255,255,255,0.1); --capsule-left-bg: #f5f5f5; --capsule-left-text: #000; --capsule-right-text: #ddd; --btn-bg: #fff; --btn-text: #000; --mask-gradient: linear-gradient(90deg, #1e1e1e 28%, rgba(30,30,30,0.92) 55%, rgba(30,30,30,0.2) 100%); --overview-text: #fff; --action-sheet-bg: rgba(30,30,30,0.85); } }
+  :root { --bg-app: linear-gradient(135deg, #f0f2f5 0%, #d9e2ec 100%); --bg-desktop: #e0e5ec; --text-primary: #111; --text-secondary: #555; --text-tertiary: #666; --card-bg: #fff; --sheet-bg: #ffffff; --card-shadow: 0 8px 20px -6px rgba(0,0,0,0.08); --glass-header: rgba(240,242,245,0.85); --glass-nav: rgba(255,255,255,0.75); --glass-border: rgba(255,255,255,0.5); --accent-purple: #6D28D9; --pill-bg: rgba(255,255,255,0.6); --pill-active-text: #fff; --capsule-bg: rgba(0,0,0,0.06); --capsule-left-bg: #000; --capsule-left-text: #fff; --capsule-right-text: #000; --btn-bg: #111; --btn-text: #fff; --mask-gradient: linear-gradient(90deg, #EAECEF 28%, rgba(234,236,239,0.92) 55%, rgba(255,255,255,0.2) 100%); --overview-text: #222; --action-sheet-bg: rgba(255,255,255,0.85); }
+  @media (prefers-color-scheme: dark) { :root { --bg-app: linear-gradient(135deg, #121212 0%, #1e1e24 100%); --bg-desktop: #000; --text-primary: #f5f5f5; --text-secondary: #a0a0a0; --text-tertiary: #888; --card-bg: #1e1e1e; --sheet-bg: #1e1e1e; --card-shadow: 0 8px 20px -6px rgba(0,0,0,0.4); --glass-header: rgba(18,18,18,0.85); --glass-nav: rgba(30,30,30,0.75); --glass-border: rgba(255,255,255,0.1); --accent-purple: #8b5cf6; --pill-bg: rgba(255,255,255,0.1); --pill-active-text: #fff; --capsule-bg: rgba(255,255,255,0.1); --capsule-left-bg: #f5f5f5; --capsule-left-text: #000; --capsule-right-text: #ddd; --btn-bg: #fff; --btn-text: #000; --mask-gradient: linear-gradient(90deg, #1e1e1e 28%, rgba(30,30,30,0.92) 55%, rgba(30,30,30,0.2) 100%); --overview-text: #fff; --action-sheet-bg: rgba(30,30,30,0.85); } }
   html, body { width: 100%; height: 100%; margin: 0; padding: 0; overflow: hidden; font-family: 'Roboto', sans-serif; background: var(--bg-app); -webkit-tap-highlight-color: transparent; overscroll-behavior: none; position: fixed; inset: 0; color: var(--text-primary); }
   #app-container { width: 100%; height: 100%; position: relative; display: flex; flex-direction: column; overflow: hidden; }
   @media (min-width: 768px) { body { background-color: var(--bg-desktop); display: flex; justify-content: center; align-items: center; position: static; } #app-container { width: 100%; max-width: 430px; height: 90vh; max-height: 880px; position: relative; border-radius: 44px; border: 8px solid #2a2a2a; box-shadow: 0 0 60px rgba(0,0,0,0.6); overflow: hidden; background: var(--bg-app); } }
@@ -114,60 +116,32 @@ const htmlContent = `<!DOCTYPE html>
   .scroll-content::-webkit-scrollbar { display: none; } 
   .list-container { display: flex; flex-direction: column; gap: 14px; }
   
-  /* ================= 🌟 "追番/热榜/热门" 大图横幅卡片样式 (第一版完美重构) 🌟 ================= */
-  .anime-banner-card { position: relative; width: 100%; height: 135px; border-radius: 16px; background: #0a0b10; border: 1px solid rgba(255,255,255,0.08); overflow: hidden; display: flex; align-items: center; justify-content: space-between; box-shadow: 0 12px 24px rgba(0,0,0,0.4); transition: transform 0.2s cubic-bezier(0.2, 0.8, 0.2, 1), box-shadow 0.2s; cursor: pointer; color: #fff; margin-bottom: 4px; }
+  /* ================= 🌟 全新大图横幅卡片样式 🌟 ================= */
+  .anime-banner-card { position: relative; width: 100%; height: 130px; border-radius: 14px; background: #0a0b10; border: 1px solid rgba(255,255,255,0.08); overflow: hidden; display: flex; align-items: center; justify-content: space-between; box-shadow: 0 12px 24px rgba(0,0,0,0.4); transition: transform 0.2s cubic-bezier(0.2, 0.8, 0.2, 1), box-shadow 0.2s; cursor: pointer; color: #fff; margin-bottom: 4px; }
   .anime-banner-card:active { transform: scale(0.96); box-shadow: 0 5px 15px rgba(0,0,0,0.5); }
-  
-  /* 左透明右图的渐变遮罩 */
-  .ab-bg { position: absolute; inset: 0; background-position: center 20%; background-size: cover; z-index: 0; opacity: 0.9; mask-image: linear-gradient(90deg, transparent 0%, rgba(0,0,0,0.8) 40%, rgba(0,0,0,1) 70%, transparent 100%); -webkit-mask-image: linear-gradient(90deg, transparent 5%, rgba(0,0,0,0.8) 35%, rgba(0,0,0,1) 65%, transparent 100%); }
-  
-  /* 左黑右暗的底部垫色，防止文字看不清 */
-  .ab-gradient { position: absolute; inset: 0; background: linear-gradient(90deg, rgba(10,11,16,1) 15%, rgba(10,11,16,0.3) 50%, rgba(10,11,16,0.85) 85%); z-index: 1; pointer-events: none; }
+  .ab-bg { position: absolute; inset: 0; background-position: center 20%; background-size: cover; z-index: 0; opacity: 0.85; mask-image: linear-gradient(90deg, transparent 0%, rgba(0,0,0,0.8) 40%, rgba(0,0,0,0.9) 70%, transparent 100%); -webkit-mask-image: linear-gradient(90deg, transparent 5%, rgba(0,0,0,0.7) 40%, rgba(0,0,0,0.9) 65%, transparent 100%); }
+  .ab-gradient { position: absolute; inset: 0; background: linear-gradient(90deg, rgba(10,11,16,1) 15%, rgba(10,11,16,0.2) 50%, rgba(10,11,16,0.85) 85%); z-index: 1; pointer-events: none; }
   
   .ab-content-left { position: relative; z-index: 2; display: flex; align-items: center; padding-left: 14px; height: 100%; width: 65%; pointer-events: none; }
-  .ab-index { width: 26px; height: 26px; background: #fff; color: #000; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 900; font-size: 14px; margin-right: 14px; flex-shrink: 0; box-shadow: 0 4px 10px rgba(0,0,0,0.6); }
-  .ab-text-col { display: flex; flex-direction: column; justify-content: center; align-items: flex-start; gap: 8px; overflow: hidden; width: 100%; }
+  .ab-index { width: 22px; height: 22px; background: #fff; color: #000; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 900; font-size: 13px; margin-right: 14px; flex-shrink: 0; box-shadow: 0 4px 10px rgba(0,0,0,0.6); }
+  .ab-text-col { display: flex; flex-direction: column; justify-content: center; align-items: flex-start; gap: 4px; overflow: hidden; }
   
-  /* 模拟 Logo 排版的大衬线体英文标题 */
-  .ab-logo-title { font-family: 'Georgia', serif; font-size: 20px; font-weight: 900; line-height: 1.1; white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; text-transform: capitalize; text-shadow: 2px 2px 8px rgba(0,0,0,0.9), 0 0 4px rgba(0,0,0,0.5); letter-spacing: 0.5px; color: #f5f5f5; }
-  
-  /* 白底黑字的中文胶囊 */
-  .ab-cn-pill { background: #fff; color: #000; font-size: 12px; font-weight: 900; padding: 4px 10px; border-radius: 6px; display: inline-block; max-width: 95%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; box-shadow: 0 4px 10px rgba(0,0,0,0.4); }
+  /* 🌟 核心修改：Logo和小白框强制统一最大宽度，精准对齐 🌟 */
+  .ab-title-logo { max-width: 130px; height: 32px; object-fit: contain; object-position: left bottom; filter: drop-shadow(2px 2px 4px rgba(0,0,0,0.6)); margin-bottom: 2px; }
+  .ab-cn-pill { background: #fff; color: #000; font-size: 11px; font-weight: 900; padding: 4px 8px; border-radius: 4px; display: inline-block; max-width: 130px; width: fit-content; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; box-shadow: 0 2px 5px rgba(0,0,0,0.3); margin-top: 2px; }
+
+  .ab-eng-title { font-size: 12px; color: rgba(255,255,255,0.8); letter-spacing: 0.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-family: Georgia, 'Times New Roman', Times, serif; font-style: italic; }
+  .ab-main-title { font-family: 'Arial Black', Impact, sans-serif; font-size: 24px; font-weight: 900; line-height: 1.1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-transform: uppercase; text-shadow: 2px 2px 6px rgba(0,0,0,0.9), 0 0 10px rgba(0,0,0,0.5); letter-spacing: -0.5px; }
   
   .ab-content-right { position: relative; z-index: 2; display: flex; flex-direction: column; align-items: flex-end; justify-content: center; padding-right: 18px; height: 100%; width: 35%; gap: 10px; pointer-events: none; }
-  
-  /* 右上角的季数和集数显示 */
-  .ab-ep-pill { background: #fff; color: #000; font-size: 11px; font-weight: 900; padding: 5px 12px; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.5); text-transform: capitalize; letter-spacing: 0.5px; }
-  
+  .ab-ep-pill { background: #fff; color: #000; font-size: 11px; font-weight: 900; padding: 4px 12px; border-radius: 6px; box-shadow: 0 4px 8px rgba(0,0,0,0.4); text-transform: uppercase; letter-spacing: 0.5px; }
   .ab-score-box { display: flex; align-items: center; }
   .ab-score-star { font-size: 16px; color: #FCD34D; margin-right: 6px; filter: drop-shadow(0 0 6px rgba(252,211,77,0.6)); margin-top: 5px; }
-  .ab-score { font-size: 52px; font-weight: 900; font-family: 'Arial Black', Impact, sans-serif; line-height: 0.8; text-shadow: 3px 3px 12px rgba(0,0,0,0.8); color: #fff; letter-spacing: -2px; }
+  .ab-score { font-size: 48px; font-weight: 900; font-family: 'Arial Black', Impact, sans-serif; line-height: 0.8; text-shadow: 3px 3px 10px rgba(0,0,0,0.6); color: #fff; letter-spacing: -2px; }
   
-  .ab-more-btn { position: absolute; top: 10px; right: 10px; z-index: 10; color: rgba(255,255,255,0.6); padding: 5px; cursor: pointer; text-shadow: 0 2px 4px rgba(0,0,0,0.8); }
-
-  /* ================= 其他页面（如继续观看、时间表）保持原状的卡片样式 ================= */
-  .rich-card { position: relative; width: 100%; height: 135px; border-radius: 22px; overflow: hidden; background: var(--card-bg); box-shadow: var(--card-shadow); display: flex; align-items: center; flex-shrink: 0; transition: transform 0.2s; cursor: pointer; }
-  .rich-card:active { transform: scale(0.97); }
-  .card-bg { position: absolute; inset: 0; background-size: cover; background-position: center; opacity: 0.85; z-index: 0; filter: saturate(1.1); }
-  .card-mask { position: absolute; inset: 0; background: var(--mask-gradient); z-index: 1; }
-  .card-body { position: relative; z-index: 2; width: 100%; height: 100%; display: flex; align-items: center; padding-left: 14px; }
-  .poster-wrapper { position: relative; width: 76px; height: 112px; margin-right: 12px; flex-shrink: 0; }
-  .poster-thumb { width: 100%; height: 100%; border-radius: 12px; object-fit: cover; box-shadow: 0 5px 10px rgba(0,0,0,0.15); background: #333; }
-  .date-badge { position: absolute; bottom: 0; left: 0; right: 0; background: rgba(0,0,0,0.65); backdrop-filter: blur(4px); color: #fff; font-size: 10px; font-weight: 700; text-align: center; padding: 3px 0; border-radius: 0 0 12px 12px; z-index: 10; letter-spacing: 0.5px; }
-  .info-col { flex: 1; height: 112px; display: flex; flex-direction: column; padding-top: 4px; position: relative; min-width: 0; }
-  .title-txt { font-size: 16px; font-weight: 900; color: var(--text-primary); margin-bottom: 2px; line-height: 1.2; display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden; letter-spacing: -0.3px; }
-  .subtitle-txt { font-size: 12px; color: var(--text-secondary); font-weight: 600; display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden; margin-bottom: 4px; }
-  .status-txt { font-size: 11px; color: var(--text-tertiary); font-weight: 600; margin-bottom: auto; display: flex; align-items: center; gap: 4px; }
-  .capsule-bar { margin-bottom: 5px; width: 88%; height: 24px; background: var(--capsule-bg); border-radius: 99px; display: flex; align-items: center; position: relative; backdrop-filter: blur(10px); padding: 2px; border: 1px solid var(--glass-border); }
-  .capsule-left { background: var(--capsule-left-bg); color: var(--capsule-left-text); padding: 0 10px; height: 100%; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 800; border-radius: 99px; white-space: nowrap; z-index: 2; box-shadow: 2px 0 6px rgba(0,0,0,0.1); }
-  .capsule-right { flex: 1; text-align: right; padding-right: 10px; color: var(--capsule-right-text); font-size: 10px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; opacity: 0.9; }
-  .check-mark { position: absolute; bottom: 7px; right: 10px; color: var(--accent-purple); font-size: 15px; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.1)); z-index: 5; }
-  .mini-player-bar { position: absolute; bottom: 0; left: 0; right: 0; height: 28px; background: linear-gradient(to top, rgba(0,0,0,0.9) 0%, rgba(0,0,0,0) 100%); z-index: 15; border-radius: 0 0 12px 12px; display: flex; align-items: center; padding: 0 8px 4px 8px; gap: 6px; }
-  .mini-player-icon { font-size: 8px; color: #fff; text-shadow: 0 1px 2px rgba(0,0,0,0.8); }
-  .mini-track { flex: 1; height: 3px; background: rgba(255,255,255,0.3); border-radius: 2px; overflow: hidden; position: relative; }
-  .mini-fill { height: 100%; background: #fff; border-radius: 2px; box-shadow: 0 0 4px rgba(255,255,255,0.5); }
-  .mini-time { font-size: 9px; font-weight: 700; color: #fff; text-shadow: 0 1px 2px rgba(0,0,0,0.8); letter-spacing: 0.3px; min-width: 20px; text-align: right; }
-  .more-btn-area { position: absolute; top: 0; right: 0; width: 50px; height: 50px; display: flex; justify-content: center; align-items: center; z-index: 10; color: #fff; text-shadow: 0 1px 3px rgba(0,0,0,0.6); }
+  .ab-more-btn { position: absolute; top: 10px; right: 10px; z-index: 10; color: rgba(255,255,255,0.4); padding: 5px; cursor: pointer; }
+  .ab-progress-bar { position: absolute; bottom: 0; left: 0; right: 0; height: 3px; background: rgba(255,255,255,0.1); z-index: 3; }
+  .ab-progress-fill { height: 100%; background: #fff; box-shadow: 0 0 8px rgba(255,255,255,0.8); }
 
   .bottom-nav { position: absolute; left: 50%; transform: translateX(-50%); width: 92%; max-width: 380px; height: 64px; background: var(--glass-nav); backdrop-filter: blur(25px) saturate(180%); -webkit-backdrop-filter: blur(25px) saturate(180%); border-radius: 99px; border: 1px solid var(--glass-border); box-shadow: 0 10px 25px rgba(0,0,0,0.12); display: flex; justify-content: space-evenly; align-items: center; z-index: 50; bottom: calc(10px + env(safe-area-inset-bottom)); }
   .nav-btn { display: flex; flex-direction: column; align-items: center; justify-content: center; color: var(--nav-icon-inactive); font-size: 10px; gap: 3px; width: 68px; height: 100%; transition: all 0.3s; font-weight: 600; }
@@ -175,14 +149,16 @@ const htmlContent = `<!DOCTYPE html>
   .nav-btn.active { color: var(--nav-icon-active); } .nav-btn.active i { transform: translateY(-3px) scale(1.1); color: var(--accent-purple); filter: drop-shadow(0 3px 6px rgba(109, 40, 217, 0.25)); }
   .nav-btn.active .user-avatar { border-color: var(--accent-purple); transform: translateY(-3px) scale(1.05); }
   .user-avatar { width: 28px; height: 28px; border-radius: 50%; background: #ccc; border: 2px solid transparent; transition: all 0.3s; box-shadow: 0 2px 5px rgba(0,0,0,0.15); object-fit: cover; }
-  .modal-overlay { position: absolute; inset: 0; z-index: 100; background: rgba(0,0,0,0.5); backdrop-filter: blur(6px); display: flex; align-items: flex-end; transition: opacity 0.3s; }
-  .detail-sheet { width: 100%; max-height: 85%; background: var(--sheet-bg); border-radius: 32px 32px 0 0; padding-bottom: calc(30px + env(safe-area-inset-bottom)); box-shadow: 0 -10px 50px rgba(0,0,0,0.35); display: flex; flex-direction: column; overflow: hidden; animation: slideUp 0.4s cubic-bezier(0.19, 1, 0.22, 1); }
+  
+  /* 🌟 核心修改：补充 var(--sheet-bg)，确保黑白模式字体底色不冲突 🌟 */
+  .modal-overlay { position: absolute; inset: 0; z-index: 100; background: rgba(0,0,0,0.6); backdrop-filter: blur(8px); display: flex; align-items: flex-end; transition: opacity 0.3s; }
+  .detail-sheet { width: 100%; max-height: 85%; background: var(--sheet-bg); color: var(--text-primary); border-radius: 32px 32px 0 0; padding-bottom: calc(30px + env(safe-area-inset-bottom)); box-shadow: 0 -10px 50px rgba(0,0,0,0.35); display: flex; flex-direction: column; overflow: hidden; animation: slideUp 0.4s cubic-bezier(0.19, 1, 0.22, 1); }
   @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
   .sheet-header { height: 240px; position: relative; flex-shrink: 0; }
   .sheet-backdrop { width: 100%; height: 100%; object-fit: cover; mask-image: linear-gradient(to bottom, black 60%, transparent 100%); -webkit-mask-image: linear-gradient(to bottom, black 60%, transparent 100%); }
-  .sheet-close { position: absolute; top: 16px; right: 16px; width: 34px; height: 34px; border-radius: 50%; background: rgba(0,0,0,0.5); color: #fff; display: flex; justify-content: center; align-items: center; backdrop-filter: blur(15px); cursor: pointer; border: 1px solid rgba(255,255,255,0.2); }
+  .sheet-close { position: absolute; top: 16px; right: 16px; width: 34px; height: 34px; border-radius: 50%; background: rgba(0,0,0,0.6); color: #fff; display: flex; justify-content: center; align-items: center; backdrop-filter: blur(15px); cursor: pointer; border: 1px solid rgba(255,255,255,0.2); }
   .sheet-body { padding: 0 24px 20px 24px; overflow-y: auto; margin-top: -40px; position: relative; z-index: 2; }
-  .sheet-title { font-size: 28px; font-weight: 900; line-height: 1.1; margin-bottom: 16px; color: var(--text-primary); letter-spacing: -0.5px; text-shadow: 0 20px 40px var(--sheet-bg); }
+  .sheet-title { font-size: 28px; font-weight: 900; line-height: 1.1; margin-bottom: 16px; color: var(--text-primary); letter-spacing: -0.5px; }
   .rating-row { display: flex; gap: 12px; margin-bottom: 16px; align-items: center; }
   .rating-badge { display: flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 12px; font-size: 13px; font-weight: 800; }
   .rating-badge.tmdb { background: rgba(13, 37, 63, 0.15); color: #0d253f; } .rating-badge.trakt { background: rgba(237, 28, 36, 0.15); color: #ed1c24; }
@@ -281,68 +257,49 @@ const htmlContent = `<!DOCTYPE html>
     <div class="scroll-content">
         <div v-if="loading" class="loading-box"><i class="fas fa-circle-notch fa-spin fa-2x"></i></div>
         <div v-else class="list-container">
-            <div v-for="(item, index) in processedList" :key="item.id">
+            <!-- 🌟 全新的 Anime Banner 卡片结构 🌟 -->
+            <div v-for="(item, index) in processedList" :key="item.id" class="anime-banner-card" @click="openModal(item)">
+                <!-- 背景图与遮罩 -->
+                <div class="ab-bg" :style="{ backgroundImage: 'url(' + getBackdrop(item) + ')' }"></div>
+                <div class="ab-gradient"></div>
                 
-                <!-- 🌟 如果当前是“我的追番/热门趋势/本周热榜”，渲染第一版炫酷大图横幅榜单卡片 🌟 -->
-                <div v-if="['chase', 'trakt_hot', 'hot'].includes(currentSubTab)" class="anime-banner-card" @click="openModal(item)">
-                    <div class="ab-bg" :style="{ backgroundImage: 'url(' + getBackdrop(item) + ')' }"></div>
-                    <div class="ab-gradient"></div>
+                <!-- 进度条(如果有) -->
+                <div v-if="item.watch_progress > 0" class="ab-progress-bar">
+                    <div class="ab-progress-fill" :style="{width: item.watch_progress + '%'}"></div>
+                </div>
+
+                <!-- 更多按钮 -->
+                <div class="ab-more-btn" @click.stop="openMenu(item)">
+                    <i class="fas fa-ellipsis-v"></i>
+                </div>
+
+                <!-- 左侧：序号与文本(或Logo) -->
+                <div class="ab-content-left">
+                    <div class="ab-index">{{ index + 1 }}</div>
                     
-                    <div class="ab-more-btn" @click.stop="openMenu(item)">
-                        <i class="fas fa-ellipsis-v"></i>
-                    </div>
+                    <div class="ab-text-col">
+                        <!-- 🌟 有专属Logo则优先渲染Logo，统一与下方小白框左对齐 🌟 -->
+                        <img v-if="item.show_logo" :src="getShowLogoUrl(item)" class="ab-title-logo" loading="lazy">
+                        
+                        <!-- 🌟 没有Logo时降级为显示原有文字标题 🌟 -->
+                        <template v-else>
+                            <div class="ab-eng-title">{{ getCardEngTitle(item) }}</div>
+                            <div class="ab-main-title">{{ item.original_name || item.original_title || item.name || item.title }}</div>
+                        </template>
 
-                    <!-- 还原左侧排版：白圈名次序号、英文衬线Logo字、下方中文白底胶囊 -->
-                    <div class="ab-content-left">
-                        <div class="ab-index">{{ index + 1 }}</div>
-                        <div class="ab-text-col">
-                            <div class="ab-logo-title">{{ item.original_name || item.original_title || item.name || item.title }}</div>
-                            <div class="ab-cn-pill">{{ item.name || item.title }}</div>
-                        </div>
-                    </div>
-
-                    <!-- 还原右侧排版：上方精确的季数/集数/年份标签，下方巨大数字评分 -->
-                    <div class="ab-content-right">
-                        <div class="ab-ep-pill">{{ getCardEpInfo(item) }}</div>
-                        <div class="ab-score-box">
-                            <i class="fas fa-star ab-score-star"></i>
-                            <span class="ab-score">{{ (item.vote_average || 0).toFixed(1) }}</span>
-                        </div>
+                        <!-- 中文季数小标签 (保证与Logo尺寸完美对齐) -->
+                        <div class="ab-cn-pill">{{ item.name || item.title }} {{ item.season_number ? ' 第'+item.season_number+'季' : '' }}</div>
                     </div>
                 </div>
 
-                <!-- 🌟 否则（即“继续观看/即将播出/新番表”等），依然渲染原来的普通列表卡片 🌟 -->
-                <div v-else class="rich-card" @click="openModal(item)">
-                    <div class="card-bg" :style="{ backgroundImage: 'url(' + getBackdrop(item) + ')' }"></div>
-                    <div class="card-mask"></div>
-                    <div class="card-body">
-                        <div class="poster-wrapper">
-                             <img :src="getPoster(item)" class="poster-thumb" loading="lazy">
-                             <div v-if="currentMainTab === 'schedule'" class="date-badge">{{ getRelativeDateLabel(item) }}</div>
-                             <div v-if="item.watch_progress > 0" class="mini-player-bar">
-                                 <i class="fas fa-play mini-player-icon"></i>
-                                 <div class="mini-track">
-                                     <div class="mini-fill" :style="{width: item.watch_progress + '%'}"></div>
-                                 </div>
-                                 <span class="mini-time">{{ getWatchedTime(item) }}</span>
-                             </div>
-                        </div>
-                        <div class="info-col">
-                            <div class="more-btn-area" @click.stop="openMenu(item)"><i class="fas fa-ellipsis-h"></i></div>
-                            <div class="title-txt">{{ item.name || item.title }}</div>
-                            <div class="subtitle-txt">{{ formatSubtitle(item) }}</div>
-                            <div class="status-txt"><i class="far fa-calendar-check"></i> {{ formatScheduleInfo(item) }}</div>
-                            <div class="capsule-bar">
-                                <div class="capsule-left">{{ formatDuration(item) }}</div>
-                                <div class="capsule-right" style="font-size:9px">
-                                    {{ currentSubTab === 'continue' ? formatTraktStats(item) : formatCapsuleRight(item) }}
-                                </div>
-                            </div>
-                            <div class="check-mark"><i class="fas fa-check-circle"></i></div>
-                        </div>
+                <!-- 右侧：集数与超大评分 -->
+                <div class="ab-content-right">
+                    <div class="ab-ep-pill">{{ getCardEpInfo(item) }}</div>
+                    <div class="ab-score-box">
+                        <i class="fas fa-star ab-score-star"></i>
+                        <span class="ab-score">{{ (item.vote_average || 0).toFixed(1) }}</span>
                     </div>
                 </div>
-
             </div>
             <div v-if="processedList.length === 0" class="text-center py-20 text-gray-400 text-sm font-bold">暂时没有内容</div>
         </div>
@@ -353,6 +310,7 @@ const htmlContent = `<!DOCTYPE html>
         <div @click="handleMineClick" :class="['nav-btn', currentMainTab === 'mine' ? 'active' : '']"><img :src="userAvatar || 'https://ui-avatars.com/api/?name=Me&background=random&color=fff'" class="user-avatar" @error="handleAvatarError"><span>我的</span></div>
     </div>
 
+    <!-- 🌟 修复黑白模式的详情弹窗 🌟 -->
     <div v-if="selectedItem" class="modal-overlay" @click.self="selectedItem = null">
         <div class="detail-sheet">
             <div class="sheet-header">
@@ -411,6 +369,7 @@ createApp({
         const fetchId = ref(0);
         const userAvatar = ref('');
 
+        // 🟢 动态获取正确的 Trakt & TMDB 请求头
         const getTraktHeaders = () => {
             const token = localStorage.getItem('trakt_token');
             const h = { 'Content-Type': 'application/json', 'trakt-api-version': '2', 'trakt-api-key': window.ENV.TRAKT_ID };
@@ -435,6 +394,7 @@ createApp({
             }
         });
 
+        // ================= 数据获取逻辑 (纯前端请求，无视 Cloudflare 拦截) =================
         const fetchBackdrop = async () => {
             try {
                 const res = await fetch('https://api.trakt.tv/movies/trending?limit=30', { headers: getTraktHeaders() });
@@ -480,10 +440,31 @@ createApp({
                 
                 if (!tmdbId) return null;
                 try {
-                    const r = await fetch('https://api.themoviedb.org/3/' + mediaType + '/' + tmdbId + '?language=zh-CN', { headers: getTmdbHeaders() });
+                    // 🌟 追加 append_to_response=images 拉取剧集专属 Logo 🌟
+                    const r = await fetch('https://api.themoviedb.org/3/' + mediaType + '/' + tmdbId + '?language=zh-CN&append_to_response=images&include_image_language=en,zh,ja,null', { headers: getTmdbHeaders() });
                     if (!r.ok) return null;
                     const d = await r.json();
-                    
+
+                    // 🌟 核心修改：针对外国剧强制要求英文 Logo 🌟
+                    let showLogo = null;
+                    if (d.images && d.images.logos && d.images.logos.length > 0) {
+                        const zhLogo = d.images.logos.find(l => l.iso_639_1 === 'zh');
+                        const enLogo = d.images.logos.find(l => l.iso_639_1 === 'en');
+                        const jaLogo = d.images.logos.find(l => l.iso_639_1 === 'ja');
+                        
+                        const countries = d.origin_country || [];
+                        if (countries.some(c => ['CN', 'TW', 'HK'].includes(c))) {
+                            // 国产/港台剧：优先中文
+                            showLogo = (zhLogo || enLogo || d.images.logos[0]).file_path;
+                        } else if (countries.includes('JP')) {
+                            // 日漫/日剧：优先日文或中文
+                            showLogo = (jaLogo || zhLogo || enLogo || d.images.logos[0]).file_path;
+                        } else {
+                            // 外国剧（欧美韩等）：绝对优先英文
+                            showLogo = (enLogo || zhLogo || d.images.logos[0]).file_path;
+                        }
+                    }
+
                     let episodeStill = null;
                     let currentProgress = null;
                     let specificRuntime = null;
@@ -500,6 +481,7 @@ createApp({
                     
                     return Object.assign({}, d, { 
                         media_type: mediaType, trakt_type: typeOverride, air_time_iso: airTime, episode_info: item.episode, 
+                        show_logo: showLogo, // 🌟 挂载 Logo 数据 🌟
                         origin_country: d.origin_country || [], genres: d.genres || [],
                         runtime_real: specificRuntime || d.runtime || (d.episode_run_time ? d.episode_run_time[0] : null),
                         episode_image: episodeStill, next_ep_date: d.next_episode_to_air ? d.next_episode_to_air.air_date : null,
@@ -653,33 +635,32 @@ createApp({
         watch([currentSubTab, selectedWeekDay], () => { if(currentMainTab.value !== 'schedule') fetchData(); });
         watch(currentMainTab, () => { fetchData(); })
 
-        // ================= 🌟 榜单卡片(追番/热榜/热门) 专属标签生成函数 🌟 =================
-        const getCardEpInfo = (item) => {
-            // 如果是电影，尽量展示发行年份
-            if (item.media_type === 'movie') {
-                if (item.release_date && item.release_date.length >= 4) {
-                    return item.release_date.substring(0, 4) + ' Movie';
-                }
-                return 'Movie';
-            }
-            
-            // 如果有精确的季数和集数（比如“我的追番”里的进度）
-            if (item.episode_info && item.episode_info.season) {
-                if (item.episode_info.season === 1) {
-                    return 'Episode ' + item.episode_info.number;
-                }
-                return 'S' + item.episode_info.season + ' Episode ' + item.episode_info.number;
-            }
-            
-            // 对于热门/热榜（没有具体到集），根据状态和首播年份展示更好看的标签
-            if (item.status === 'Ended') return 'Ended';
-            if (item.status === 'Returning Series') return 'Returning';
-            if (item.first_air_date && item.first_air_date.length >= 4) {
-                return item.first_air_date.substring(0, 4) + ' Series';
-            }
+        // ================= 🌟 卡片专属格式化函数 🌟 =================
+        const getCardEngTitle = (item) => {
+            if (item.status === 'Returning Series') return 'Returning Series';
+            if (item.original_name) return item.original_name;
+            if (item.original_title) return item.original_title;
             return 'TV Series';
         };
 
+        const getCardEpInfo = (item) => {
+            if (item.media_type === 'movie') return 'Movie';
+            if (item.episode_info) {
+                return 'S' + item.episode_info.season + ' Episode ' + item.episode_info.number;
+            }
+            if (item.next_ep_date) return 'Airing';
+            if (item.status === 'Ended') return 'Ended';
+            return 'Series';
+        };
+
+        // 🌟 新增：获取剧集专属 Logo 🌟
+        const getShowLogoUrl = (item) => {
+            if (item.show_logo) {
+                return TMDB_IMG + 'w300' + item.show_logo; // 使用 300px 宽度的高清小图，保证 Logo 清晰
+            }
+            return null;
+        };
+        
         const formatSubtitle = (item) => { if (item.episode_info) return 'S' + item.episode_info.season + ' E' + item.episode_info.number; if (item.total_episodes) return '共 ' + item.total_episodes + ' 集'; return item.original_name || item.title || 'Movie'; };
         const formatDuration = (item) => { let t = item.runtime_real; if (!t && item.media_type === 'tv') { const isAnime = (item.origin_country && item.origin_country.includes('JP')) || (item.genres && item.genres.some(g => g.name === 'Animation' || g.name === '动画')); t = isAnime ? 24 : 45; } if (!t || t === 0) return '未知'; return t + '分钟'; };
         const formatTraktStats = (item) => { if (item.media_type === 'movie') return 'Movie'; let total = item.total_episodes || 0; let current = item.episode_info ? item.episode_info.number : 0; let remaining = Math.max(0, total - current); if (item.status === 'Ended' && remaining <= 0) return '已完结'; let runtimeStr = formatDuration(item); let runtime = parseInt(runtimeStr) || 24; let minsLeft = remaining * runtime; let timeStr = minsLeft > 60 ? Math.floor(minsLeft/60) + '小时 ' + (minsLeft%60) + '分' : minsLeft + '分钟'; return '剩余' + remaining + '集 · ' + timeStr; };
@@ -706,9 +687,10 @@ createApp({
             return mStr + ':' + sStr;
         };
 
-        return { currentMainTab, switchMainTab, currentSubTab, subTabs, filterType, weekDays, selectedWeekDay, loading, processedList, getPageTitle, selectedItem, menuItem, toastMsg, openModal, openMenu, performAction, getPoster, getBackdrop, formatSubtitle, formatDuration, formatScheduleInfo, formatCapsuleRight, formatTraktStats, getRelativeDateLabel, formatVotes, isLoggedIn, logout, handleMineClick, showLogoutModal, backgroundPosters, getWatchedTime, userAvatar, handleAvatarError, getCardEpInfo };
+        return { currentMainTab, switchMainTab, currentSubTab, subTabs, filterType, weekDays, selectedWeekDay, loading, processedList, getPageTitle, selectedItem, menuItem, toastMsg, openModal, openMenu, performAction, getPoster, getBackdrop, formatSubtitle, formatDuration, formatScheduleInfo, formatCapsuleRight, formatTraktStats, getRelativeDateLabel, formatVotes, isLoggedIn, logout, handleMineClick, showLogoutModal, backgroundPosters, getWatchedTime, userAvatar, handleAvatarError, getCardEngTitle, getCardEpInfo, getShowLogoUrl };
     }
 }).mount('#app-container');
 </script>
 </body>
-</html>`;
+</html>
+`;
