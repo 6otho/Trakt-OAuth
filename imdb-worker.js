@@ -124,14 +124,21 @@ const htmlContent = `
   
   .ab-content-left { position: relative; z-index: 2; display: flex; align-items: center; padding-left: 14px; height: 100%; width: 65%; pointer-events: none; }
   .ab-index { width: 22px; height: 22px; background: #fff; color: #000; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 900; font-size: 13px; margin-right: 14px; flex-shrink: 0; box-shadow: 0 4px 10px rgba(0,0,0,0.6); }
-  .ab-text-col { display: flex; flex-direction: column; justify-content: center; align-items: flex-start; gap: 4px; overflow: hidden; }
   
-  /* 🌟 核心修改：Logo和小白框强制统一最大宽度，精准对齐 🌟 */
-  .ab-title-logo { max-width: 130px; height: 32px; object-fit: contain; object-position: left bottom; filter: drop-shadow(2px 2px 4px rgba(0,0,0,0.6)); margin-bottom: 2px; }
-  .ab-cn-pill { background: #fff; color: #000; font-size: 11px; font-weight: 900; padding: 4px 8px; border-radius: 4px; display: inline-block; max-width: 130px; width: fit-content; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; box-shadow: 0 2px 5px rgba(0,0,0,0.3); margin-top: 2px; }
-
+  .ab-text-col { display: flex; flex-direction: column; justify-content: center; align-items: flex-start; gap: 2px; overflow: hidden; }
+  .ab-title-logo { max-width: 140px; height: 32px; object-fit: contain; object-position: left bottom; filter: drop-shadow(2px 2px 4px rgba(0,0,0,0.6)); margin-bottom: 4px; }
   .ab-eng-title { font-size: 12px; color: rgba(255,255,255,0.8); letter-spacing: 0.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-family: Georgia, 'Times New Roman', Times, serif; font-style: italic; }
-  .ab-main-title { font-family: 'Arial Black', Impact, sans-serif; font-size: 24px; font-weight: 900; line-height: 1.1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-transform: uppercase; text-shadow: 2px 2px 6px rgba(0,0,0,0.9), 0 0 10px rgba(0,0,0,0.5); letter-spacing: -0.5px; }
+  .ab-main-title { font-family: 'Arial Black', Impact, sans-serif; font-size: 24px; font-weight: 900; line-height: 1.1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-transform: uppercase; text-shadow: 2px 2px 6px rgba(0,0,0,0.9), 0 0 10px rgba(0,0,0,0.5); letter-spacing: -0.5px; margin-bottom: 4px; }
+  
+  /* 🌟 新增：播放提示 (已看XX% 或 首播日期) 🌟 */
+  .ab-play-hint { font-size: 11px; color: rgba(255,255,255,0.8); display: flex; align-items: center; gap: 5px; font-weight: 600; text-shadow: 1px 1px 3px rgba(0,0,0,0.8); margin-bottom: 4px; }
+  .ab-play-hint i { font-size: 12px; }
+
+  /* 🌟 新增：高级半透明胶囊进度条 🌟 */
+  .ab-capsule-bar { position: relative; width: 140px; height: 22px; border-radius: 99px; background: rgba(255,255,255,0.15); border: 1px solid rgba(255,255,255,0.4); display: flex; align-items: center; justify-content: space-between; overflow: hidden; box-shadow: 0 4px 10px rgba(0,0,0,0.4); backdrop-filter: blur(4px); }
+  .ab-capsule-fill { position: absolute; left: 0; top: 0; bottom: 0; background: rgba(255,255,255,0.3); z-index: 1; border-radius: 99px 0 0 99px; transition: width 0.3s ease; }
+  .ab-capsule-left { background: #000; color: #fff; padding: 0 10px; height: 100%; display: flex; align-items: center; justify-content: center; border-radius: 99px; font-size: 10px; font-weight: 900; z-index: 2; position: relative; letter-spacing: 0.5px; box-shadow: 2px 0 5px rgba(0,0,0,0.3); }
+  .ab-capsule-right { color: #fff; padding-right: 10px; font-size: 10px; font-weight: 800; z-index: 2; position: relative; letter-spacing: 0.5px; text-shadow: 1px 1px 2px rgba(0,0,0,0.8); }
   
   .ab-content-right { position: relative; z-index: 2; display: flex; flex-direction: column; align-items: flex-end; justify-content: center; padding-right: 18px; height: 100%; width: 35%; gap: 10px; pointer-events: none; }
   .ab-ep-pill { background: #fff; color: #000; font-size: 11px; font-weight: 900; padding: 4px 12px; border-radius: 6px; box-shadow: 0 4px 8px rgba(0,0,0,0.4); text-transform: uppercase; letter-spacing: 0.5px; }
@@ -150,7 +157,7 @@ const htmlContent = `
   .nav-btn.active .user-avatar { border-color: var(--accent-purple); transform: translateY(-3px) scale(1.05); }
   .user-avatar { width: 28px; height: 28px; border-radius: 50%; background: #ccc; border: 2px solid transparent; transition: all 0.3s; box-shadow: 0 2px 5px rgba(0,0,0,0.15); object-fit: cover; }
   
-  /* 🌟 核心修改：补充 var(--sheet-bg)，确保黑白模式字体底色不冲突 🌟 */
+  /* 🌟 修复黑白模式的详情弹窗 🌟 */
   .modal-overlay { position: absolute; inset: 0; z-index: 100; background: rgba(0,0,0,0.6); backdrop-filter: blur(8px); display: flex; align-items: flex-end; transition: opacity 0.3s; }
   .detail-sheet { width: 100%; max-height: 85%; background: var(--sheet-bg); color: var(--text-primary); border-radius: 32px 32px 0 0; padding-bottom: calc(30px + env(safe-area-inset-bottom)); box-shadow: 0 -10px 50px rgba(0,0,0,0.35); display: flex; flex-direction: column; overflow: hidden; animation: slideUp 0.4s cubic-bezier(0.19, 1, 0.22, 1); }
   @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
@@ -263,7 +270,7 @@ const htmlContent = `
                 <div class="ab-bg" :style="{ backgroundImage: 'url(' + getBackdrop(item) + ')' }"></div>
                 <div class="ab-gradient"></div>
                 
-                <!-- 进度条(如果有) -->
+                <!-- 底部极细进度线(保留作高光边框) -->
                 <div v-if="item.watch_progress > 0" class="ab-progress-bar">
                     <div class="ab-progress-fill" :style="{width: item.watch_progress + '%'}"></div>
                 </div>
@@ -273,22 +280,29 @@ const htmlContent = `
                     <i class="fas fa-ellipsis-v"></i>
                 </div>
 
-                <!-- 左侧：序号与文本(或Logo) -->
+                <!-- 🌟 左侧：重新排版，支持日历/进度提示与半透明胶囊进度条 🌟 -->
                 <div class="ab-content-left">
                     <div class="ab-index">{{ index + 1 }}</div>
                     
                     <div class="ab-text-col">
-                        <!-- 🌟 有专属Logo则优先渲染Logo，统一与下方小白框左对齐 🌟 -->
+                        <!-- 专属 Logo / 或兜底文字 -->
                         <img v-if="item.show_logo" :src="getShowLogoUrl(item)" class="ab-title-logo" loading="lazy">
-                        
-                        <!-- 🌟 没有Logo时降级为显示原有文字标题 🌟 -->
                         <template v-else>
                             <div class="ab-eng-title">{{ getCardEngTitle(item) }}</div>
                             <div class="ab-main-title">{{ item.original_name || item.original_title || item.name || item.title }}</div>
                         </template>
 
-                        <!-- 中文季数小标签 (保证与Logo尺寸完美对齐) -->
-                        <div class="ab-cn-pill">{{ item.name || item.title }} {{ item.season_number ? ' 第'+item.season_number+'季' : '' }}</div>
+                        <!-- 上方提示文本 (已看 18.4% 或 首播日期) -->
+                        <div class="ab-play-hint" v-if="getPlayHint(item)">
+                            <i :class="getPlayHintIcon(item)"></i> {{ getPlayHint(item) }}
+                        </div>
+
+                        <!-- 🌟 核心：半透明白边胶囊进度条 🌟 -->
+                        <div class="ab-capsule-bar">
+                            <div class="ab-capsule-fill" :style="{width: (item.watch_progress || 0) + '%'}"></div>
+                            <div class="ab-capsule-left">{{ formatDuration(item) }}</div>
+                            <div class="ab-capsule-right">{{ getCapsuleRightText(item) }}</div>
+                        </div>
                     </div>
                 </div>
 
@@ -394,7 +408,7 @@ createApp({
             }
         });
 
-        // ================= 数据获取逻辑 (纯前端请求，无视 Cloudflare 拦截) =================
+        // ================= 数据获取逻辑 =================
         const fetchBackdrop = async () => {
             try {
                 const res = await fetch('https://api.trakt.tv/movies/trending?limit=30', { headers: getTraktHeaders() });
@@ -440,7 +454,6 @@ createApp({
                 
                 if (!tmdbId) return null;
                 try {
-                    // 🌟 追加 append_to_response=images 拉取剧集专属 Logo 🌟
                     const r = await fetch('https://api.themoviedb.org/3/' + mediaType + '/' + tmdbId + '?language=zh-CN&append_to_response=images&include_image_language=en,zh,ja,null', { headers: getTmdbHeaders() });
                     if (!r.ok) return null;
                     const d = await r.json();
@@ -481,7 +494,7 @@ createApp({
                     
                     return Object.assign({}, d, { 
                         media_type: mediaType, trakt_type: typeOverride, air_time_iso: airTime, episode_info: item.episode, 
-                        show_logo: showLogo, // 🌟 挂载 Logo 数据 🌟
+                        show_logo: showLogo, 
                         origin_country: d.origin_country || [], genres: d.genres || [],
                         runtime_real: specificRuntime || d.runtime || (d.episode_run_time ? d.episode_run_time[0] : null),
                         episode_image: episodeStill, next_ep_date: d.next_episode_to_air ? d.next_episode_to_air.air_date : null,
@@ -653,17 +666,43 @@ createApp({
             return 'Series';
         };
 
-        // 🌟 新增：获取剧集专属 Logo 🌟
         const getShowLogoUrl = (item) => {
             if (item.show_logo) {
-                return TMDB_IMG + 'w300' + item.show_logo; // 使用 300px 宽度的高清小图，保证 Logo 清晰
+                return TMDB_IMG + 'w300' + item.show_logo; 
             }
             return null;
+        };
+
+        // 🌟 新增：获取进度条右侧文字 🌟
+        const getCapsuleRightText = (item) => {
+            if (item.media_type === 'movie') return '电影';
+            const total = item.total_episodes || '?';
+            // 提取当前集数，优先用 continue 列表里的 episode_info，如果没有则用最后播出集数
+            let current = item.episode_info ? item.episode_info.number : (item.last_ep_info ? item.last_ep_info.episode_number : 0);
+            if (current > 0) {
+                return current + '/' + total + '集';
+            }
+            if (item.status === 'Ended') return total + '集全';
+            return '更新至 ' + total + ' 集';
+        };
+
+        // 🌟 新增：获取上方播放提示文字 🌟
+        const getPlayHint = (item) => {
+            if (item.watch_progress > 0) return '已看 ' + parseFloat(item.watch_progress).toFixed(1) + '%';
+            if (item.next_ep_date) return '下集: ' + item.next_ep_date;
+            if (item.first_air_date) return '首播: ' + item.first_air_date;
+            if (item.name || item.title) return item.name || item.title;
+            return '';
+        };
+
+        // 🌟 新增：获取上方播放提示图标 🌟
+        const getPlayHintIcon = (item) => {
+            if (item.watch_progress > 0) return 'far fa-calendar-check';
+            return 'far fa-calendar-alt';
         };
         
         const formatSubtitle = (item) => { if (item.episode_info) return 'S' + item.episode_info.season + ' E' + item.episode_info.number; if (item.total_episodes) return '共 ' + item.total_episodes + ' 集'; return item.original_name || item.title || 'Movie'; };
         const formatDuration = (item) => { let t = item.runtime_real; if (!t && item.media_type === 'tv') { const isAnime = (item.origin_country && item.origin_country.includes('JP')) || (item.genres && item.genres.some(g => g.name === 'Animation' || g.name === '动画')); t = isAnime ? 24 : 45; } if (!t || t === 0) return '未知'; return t + '分钟'; };
-        const formatTraktStats = (item) => { if (item.media_type === 'movie') return 'Movie'; let total = item.total_episodes || 0; let current = item.episode_info ? item.episode_info.number : 0; let remaining = Math.max(0, total - current); if (item.status === 'Ended' && remaining <= 0) return '已完结'; let runtimeStr = formatDuration(item); let runtime = parseInt(runtimeStr) || 24; let minsLeft = remaining * runtime; let timeStr = minsLeft > 60 ? Math.floor(minsLeft/60) + '小时 ' + (minsLeft%60) + '分' : minsLeft + '分钟'; return '剩余' + remaining + '集 · ' + timeStr; };
         const formatScheduleInfo = (item) => { if (item.watch_progress) return '已看 ' + parseFloat(item.watch_progress).toFixed(1) + '%'; if (item.status === 'Returning Series' && item.next_ep_date) { const day = new Date(item.next_ep_date).getDay(); const weekStr = ['日','一','二','三','四','五','六'][day]; return '每周' + weekStr + '更新'; } if (item.status === 'Ended' && item.first_air_date && item.last_ep_date) { const start = item.first_air_date.slice(0,4); const end = item.last_ep_date.slice(0,4); return start + ' - ' + end; } if(item.release_date) return item.release_date; if(item.first_air_date) return '首播: ' + item.first_air_date; return '未知日程'; };
         const formatCapsuleRight = (item) => { if (item.media_type === 'movie') { return item.release_date ? item.release_date.split('-')[0] : '电影'; } const total = item.total_episodes || 0; const lastEp = item.last_ep_info; const current = lastEp ? lastEp.episode_number : 0; if (total > 0) { if (item.status === 'Ended' || item.status === 'Canceled') return total + '集全'; if (current > 0) return current + '/' + total + '集'; return '共' + total + '集'; } if (item.status === 'Returning Series') return '更新中'; if (item.status === 'Ended') return '已完结'; return 'TV Series'; };
         const getRelativeDateLabel = (item) => { const dateStr = item.air_time_iso || item.first_air_date; if (!dateStr) return ''; const targetDate = new Date(dateStr); const today = new Date(); today.setHours(0,0,0,0); const targetCheck = new Date(targetDate); targetCheck.setHours(0,0,0,0); const diffTime = targetCheck - today; const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); if (diffDays === 0) return '今天'; if (diffDays === 1) return '明天'; if (diffDays === 2) return '后天'; const weekStr = ['周日','周一','周二','周三','周四','周五','周六'][targetDate.getDay()]; if (Math.abs(diffDays) > 7) return (targetDate.getMonth()+1) + '/' + targetDate.getDate(); return weekStr; };
@@ -687,7 +726,7 @@ createApp({
             return mStr + ':' + sStr;
         };
 
-        return { currentMainTab, switchMainTab, currentSubTab, subTabs, filterType, weekDays, selectedWeekDay, loading, processedList, getPageTitle, selectedItem, menuItem, toastMsg, openModal, openMenu, performAction, getPoster, getBackdrop, formatSubtitle, formatDuration, formatScheduleInfo, formatCapsuleRight, formatTraktStats, getRelativeDateLabel, formatVotes, isLoggedIn, logout, handleMineClick, showLogoutModal, backgroundPosters, getWatchedTime, userAvatar, handleAvatarError, getCardEngTitle, getCardEpInfo, getShowLogoUrl };
+        return { currentMainTab, switchMainTab, currentSubTab, subTabs, filterType, weekDays, selectedWeekDay, loading, processedList, getPageTitle, selectedItem, menuItem, toastMsg, openModal, openMenu, performAction, getPoster, getBackdrop, formatSubtitle, formatDuration, formatScheduleInfo, formatCapsuleRight, getRelativeDateLabel, formatVotes, isLoggedIn, logout, handleMineClick, showLogoutModal, backgroundPosters, getWatchedTime, userAvatar, handleAvatarError, getCardEngTitle, getCardEpInfo, getShowLogoUrl, getPlayHint, getPlayHintIcon, getCapsuleRightText };
     }
 }).mount('#app-container');
 </script>
